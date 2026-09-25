@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voter wizard — Family Vote</title>
+  <link rel="stylesheet" href="/css/app.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "@noble/curves/secp256k1.js": "/vendor/@noble/curves/esm/secp256k1.js",
+      "@noble/curves/": "/vendor/@noble/curves/esm/",
+      "@noble/hashes/sha2.js": "/vendor/@noble/hashes/esm/sha2.js",
+      "@noble/hashes/sha256.js": "/vendor/@noble/hashes/esm/sha256.js",
+      "@noble/hashes/hmac.js": "/vendor/@noble/hashes/esm/hmac.js",
+      "@noble/hashes/utils.js": "/vendor/@noble/hashes/esm/utils.js",
+      "@noble/hashes/utils": "/vendor/@noble/hashes/esm/utils.js",
+      "@noble/hashes/crypto.js": "/vendor/@noble/hashes/esm/crypto.js",
+      "@noble/hashes/crypto": "/vendor/@noble/hashes/esm/crypto.js",
+      "@noble/hashes/": "/vendor/@noble/hashes/esm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <div id="nav"></div>
+    <div id="role"></div>
+    <div id="progress"></div>
+    <div id="msg"></div>
+
+    <!-- STEP 0: Welcome -->
+    <div class="card wizard-panel" data-step="0">
+      <h2 class="step-h">Welcome, voter <button type="button" class="help-q" data-help="roles">?</button></h2>
+      <p class="muted">
+        This wizard walks you through <strong style="color:var(--text)">one screen at a time</strong>.
+        You will: check your invite → create a secret key → <em>save it</em> → register → vote when open.
+      </p>
+      <div class="teach">
+        <div class="icon">!</div>
+        <div>
+          <strong>You need an invite link from the organizer</strong>
+          <p>If nobody sent you a link yet, wait. You cannot register by typing a name alone.</p>
+        </div>
+      </div>
+      <div class="row" id="serverHint"></div>
+      <div class="next-bar">
+        <a class="btn secondary" href="/">Back to start</a>
+        <button type="button" class="btn" id="btnToInvite">I have an invite — continue →</button>
+      </div>
+    </div>
+
+    <!-- STEP 1: Invite -->
+    <div class="card wizard-panel" data-step="1" hidden>
+      <h2 class="step-h">Step 1 · Check your invite <button type="button" class="help-q" data-help="invite">?</button></h2>
+      <p class="muted">Paste the full link the organizer sent, or just the long code after <code class="mono">invite=</code>.</p>
+      <label for="invite">Invite link or token</label>
+      <input id="invite" class="mono" placeholder="http://localhost:3847/voter.html?invite=…" autocomplete="off" />
+      <div class="row">
+        <button type="button" class="btn" id="btnLookup">Check invite</button>
+      </div>
+      <div id="inviteResult" style="margin-top:0.75rem"></div>
+      <div class="next-bar">
+        <button type="button" class="btn secondary" data-back>← Back</button>
+        <button type="button" class="btn" id="btnInviteNext" disabled>Looks good — next →</button>
+      </div>
+    </div>
+
+    <!-- STEP 2: Create key -->
+    <div class="card wizard-panel" data-step="2" hidden>
+      <h2 class="step-h">Step 2 · Create your secret key <button type="button" class="help-q" data-help="secret_key">?</button></h2>
+      <p class="muted">
+        We generate this <strong style="color:var(--text)">on your device</strong>.
+        The public half is what gets registered — you don’t need to copy the public key by hand.
+      </p>
+      <div class="teach">
+        <div class="icon">🔑</div>
+        <div>
+          <strong>Secret vs public <button type="button" class="help-q" data-help="public_key">?</button></strong>
+          <p>Secret = keep forever, never upload. Public = safe for the server. Like a password vs a username.</p>
+        </div>
+      </div>
+      <button type="button" class="btn success" id="btnGenKey">Generate my keypair</button>
+      <p id="cryptoErr" class="muted" style="margin-top:0.5rem"></p>
+      <div id="keyPreview" hidden style="margin-top:1rem">
+        <div class="kpi">
+          <div class="cell"><div class="lbl">Public key (will be registered)</div><div class="val mono" id="pkShort"></div></div>
+          <div class="cell"><div class="lbl">Fingerprint</div><div class="val mono" id="fpShort"></div></div>
+        </div>
+        <p class="muted">Secret is hidden until the next step so you focus on saving it safely.</p>
+      </div>
+      <div class="next-bar">
+        <button type="button" class="btn secondary" data-back>← Back</button>
+        <button type="button" class="btn" id="btnKeyNext" disabled>I have a key — save it next →</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: Save (gate) -->
+    <div class="card wizard-panel" data-step="3" hidden>
+      <h2 class="step-h">Step 3 · Save your secret <button type="button" class="help-q" data-help="save_backup">?</button></h2>
+      <div class="callout-save">
+        <strong>Stop and save.</strong> If you lose this secret, you cannot vote. The server cannot recover it.
+      </div>
+      <label>Your secret key (this is the one you protect)</label>
+      <div class="secret-box" id="skBox"></div>
+      <div class="row" style="margin-top:0.75rem">
+        <button type="button" class="btn secondary" id="btnCopySk">Copy secret</button>
+        <button type="button" class="btn secondary" id="btnDlJson">Download backup file</button>
+        <button type="button" class="btn secondary" id="btnDlPaper">Download paper wallet</button>
+      </div>
+      <div class="save-checklist" style="margin-top:1rem">
+        <label><input type="checkbox" id="chkDl" /> I downloaded a backup file or paper wallet, <em>or</em> saved the secret in a password manager</label>
+        <label><input type="checkbox" id="chkNoShare" /> I will not send this secret in chat, email, or screenshots to the cloud</label>
+        <label><input type="checkbox" id="chkUnderstand" /> I understand only the public key will be registered — not this secret</label>
+      </div>
+      <div class="next-bar">
+        <button type="button" class="btn secondary" data-back>← Back</button>
+        <button type="button" class="btn" id="btnSaveNext" disabled>I’ve saved it — register next →</button>
+      </div>
+    </div>
+
+    <!-- STEP 4: Register -->
+    <div class="card wizard-panel" data-step="4" hidden>
+      <h2 class="step-h">Step 4 · Register on the server <button type="button" class="help-q" data-help="register">?</button></h2>
+      <p class="muted">
+        One click sends your <strong style="color:var(--text)">public key</strong> with the invite.
+        This does <em>not</em> cast a vote. It only puts you on the eligible list.
+      </p>
+      <div class="kpi" id="regSummary"></div>
+      <button type="button" class="btn success block" id="btnRegister">Register my public key</button>
+      <div id="regDone" hidden style="margin-top:1rem">
+        <div class="alert ok" id="regMsg"></div>
+      </div>
+      <div class="next-bar">
+        <button type="button" class="btn secondary" data-back>← Back</button>
+        <button type="button" class="btn" id="btnRegNext" disabled>Continue →</button>
+      </div>
+    </div>
+
+    <!-- STEP 5: Wait / Vote -->
+    <div class="card wizard-panel" data-step="5" hidden>
+      <h2 class="step-h">Step 5 · Vote <button type="button" class="help-q" data-help="vote">?</button></h2>
+      <div id="voteWait">
+        <div class="alert info">
+          You’re registered. Voting opens when the <strong>organizer</strong> freezes the roster and clicks Open.
+          Leave this tab open and hit refresh, or come back later with the same device (your key is saved here if you used the backup).
+        </div>
+        <div class="row">
+          <button type="button" class="btn secondary" id="btnRefreshVote">Check if voting is open</button>
+          <a class="btn secondary" href="/results.html">View results page</a>
+        </div>
+      </div>
+      <div id="voteOpen" hidden>
+        <p class="muted" id="voteTitle"></p>
+        <p class="muted">Your secret stays on this device. We build a ring signature and upload only the proof.</p>
+        <div id="candidates"></div>
+        <button type="button" class="btn success block" id="btnCast" disabled>Cast my ballot</button>
+      </div>
+      <div id="voteReceipt" hidden style="margin-top:1rem">
+        <div class="alert ok">Ballot accepted. Your name was not written next to your choice.</div>
+        <pre class="secret-box" id="receiptBox"></pre>
+        <a class="btn" href="/results.html">See tally &amp; chain →</a>
+      </div>
+      <div class="next-bar">
+        <a class="btn secondary" href="/">Finish — back to start</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      wizardNav,
+      renderProgress,
+      roleBanner,
+      flashEl,
+      initWizardPage,
+    } from '/js/wizard-ui.js';
+
+    const STEPS = [
+      'Welcome',
+      'Invite',
+      'Create key',
+      'Save secret',
+      'Register',
+      'Vote',
+    ];
+
+    let step = 0;
+    let inviteToken = null;
+    let inviteMeta = null;
+    let identity = null;
+    let selected = null;
+    let cryptoApi = null;
+
+    const msg = document.getElementById('msg');
+    const flash = (t, k) => flashEl(msg, t, k);
+
+    document.getElementById('nav').innerHTML = wizardNav('voter');
+
+    function setRole() {
+      const roles = [
+        {
+          who: 'A voter (invited person)',
+          doing: 'Learning what will happen',
+          next: 'Check your invite link',
+        },
+        {
+          who: 'A voter',
+          doing: 'Proving you were invited',
+          next: 'Create a secret key on this device',
+        },
+        {
+          who: 'A voter',
+          doing: 'Creating your voting identity',
+          next: 'Save the secret before anything else',
+        },
+        {
+          who: 'A voter — protect this like a password',
+          doing: 'Backing up your secret key',
+          next: 'Register only the public key',
+        },
+        {
+          who: inviteMeta ? `Voter “${inviteMeta.label}”` : 'A voter',
+          doing: 'Joining the eligible list',
+          next: 'Wait for organizer to open voting',
+        },
+        {
+          who: inviteMeta ? `Voter “${inviteMeta.label}”` : 'A registered voter',
+          doing: 'Casting an anonymous ballot',
+          next: 'Results page / done',
+        },
+      ];
+      const r = roles[step] || roles[0];
+      document.getElementById('role').innerHTML = roleBanner({
+        who: r.who,
+        doing: r.doing,
+        next: r.next,
+        helpId: 'roles',
+      });
+      document.getElementById('progress').innerHTML = renderProgress({
+        steps: STEPS,
+        current: step,
+        title: 'Voter wizard',
+      });
+      initWizardPage();
+    }
+
+    function showStep(n) {
+      step = n;
+      document.querySelectorAll('.wizard-panel').forEach((p) => {
+        p.hidden = Number(p.dataset.step) !== n;
+      });
+      setRole();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Prefill invite from URL
+    const params = new URLSearchParams(location.search);
+    const preInvite = params.get('invite') || '';
+    if (preInvite) {
+      document.getElementById('invite').value = preInvite;
+    }
+
+    // Load crypto
+    try {
+      cryptoApi = await import('/js/crypto-client.js');
+      // Resume identity if present
+      const existing = cryptoApi.loadIdentity();
+      if (existing?.secretKey && existing?.publicKey) {
+        identity = existing;
+      }
+    } catch (e) {
+      console.error(e);
+      document.getElementById('cryptoErr').textContent =
+        'Crypto failed to load. Hard-refresh (Ctrl+Shift+R). ' + (e.message || '');
+    }
+
+    // Server status on welcome
+    try {
+      const s = await fetch('/api/status').then((r) => r.json());
+      const el = document.getElementById('serverHint');
+      if (!s.election) {
+        el.innerHTML =
+          '<span class="pill warn">No election yet — organizer must create one and send invites</span>';
+      } else {
+        el.innerHTML = `<span class="pill info">${s.election.title} · ${s.election.status}</span>
+          <span class="pill">${s.election.voterCount || 0} registered · ${s.election.inviteCount || 0} invites made</span>`;
+      }
+    } catch {
+      document.getElementById('serverHint').innerHTML =
+        '<span class="pill bad">Cannot reach server</span>';
+    }
+
+    document.getElementById('btnToInvite').onclick = () => showStep(1);
+    document.querySelectorAll('[data-back]').forEach((b) => {
+      b.onclick = () => showStep(Math.max(0, step - 1));
+    });
+
+    function parseInvite(raw) {
+      const s = (raw || '').trim();
+      if (!s) return '';
+      try {
+        if (s.includes('invite=')) {
+          return new URL(s, location.origin).searchParams.get('invite') || '';
+        }
+      } catch {
+        /* */
+      }
+      if (s.includes('invite=')) return decodeURIComponent(s.split('invite=')[1].split('&')[0]);
+      return s.replace(/\s+/g, '');
+    }
+
+    document.getElementById('btnLookup').onclick = async () => {
+      const token = parseInvite(document.getElementById('invite').value);
+      if (!token) {
+        flash('Paste the invite link from your organizer first.', 'warn');
+        return;
+      }
+      flash('Checking invite…', 'info');
+      const res = await fetch('/api/invite/' + encodeURIComponent(token));
+      const data = await res.json().catch(() => ({}));
+      const box = document.getElementById('inviteResult');
+      if (!res.ok) {
+        inviteToken = null;
+        document.getElementById('btnInviteNext').disabled = true;
+        box.innerHTML = `<div class="alert err"><strong>${data.error || 'Not found'}</strong><br/>${data.hint || 'Ask the organizer to generate an invite and send you the full link.'}</div>`;
+        flash(data.error || 'Invite not found', 'err');
+        return;
+      }
+      inviteToken = token;
+      inviteMeta = data;
+      document.getElementById('invite').value = token;
+      const ok = !data.used && data.status === 'registration';
+      box.innerHTML = `<div class="alert ${ok ? 'ok' : 'warn'}">
+        <strong>Invite for “${data.label}”</strong><br/>
+        Election: ${data.electionTitle || '—'} · status: ${data.status}${data.used ? ' · already used' : ''}
+      </div>`;
+      document.getElementById('btnInviteNext').disabled = !ok;
+      if (ok) flash('Invite is valid. Continue to create your key.', 'ok');
+      else if (data.used) flash('This invite was already used. Ask for a new one.', 'warn');
+      else flash('Registration is not open (status: ' + data.status + ').', 'warn');
+    };
+
+    document.getElementById('btnInviteNext').onclick = () => {
+      if (!inviteToken) return;
+      // If we already have a key from before, skip create or allow re-use
+      showStep(2);
+      if (identity?.publicKey && cryptoApi) {
+        document.getElementById('keyPreview').hidden = false;
+        document.getElementById('pkShort').textContent =
+          identity.publicKey.slice(0, 20) + '…';
+        document.getElementById('fpShort').textContent = cryptoApi.fingerprintPublicKey(
+          identity.publicKey
+        );
+        document.getElementById('btnKeyNext').disabled = false;
+        flash('Found a key already on this device. You can generate a new one or continue.', 'info');
+      }
+    };
+
+    document.getElementById('btnGenKey').onclick = () => {
+      if (!cryptoApi) {
+        flash('Crypto not loaded — hard-refresh the page.', 'err');
+        return;
+      }
+      identity = cryptoApi.generateKeypair();
+      cryptoApi.saveIdentity({
+        ...identity,
+        label: inviteMeta?.label,
+        electionId: inviteMeta?.electionId,
+      });
+      document.getElementById('keyPreview').hidden = false;
+      document.getElementById('pkShort').textContent = identity.publicKey.slice(0, 22) + '…';
+      document.getElementById('fpShort').textContent = cryptoApi.fingerprintPublicKey(
+        identity.publicKey
+      );
+      document.getElementById('btnKeyNext').disabled = false;
+      flash('Key created on this device. Next you must save the secret.', 'ok');
+    };
+
+    document.getElementById('btnKeyNext').onclick = () => {
+      if (!identity?.secretKey) {
+        flash('Generate a key first.', 'warn');
+        return;
+      }
+      document.getElementById('skBox').textContent = identity.secretKey;
+      // reset checkboxes
+      ['chkDl', 'chkNoShare', 'chkUnderstand'].forEach((id) => {
+        document.getElementById(id).checked = false;
+      });
+      document.getElementById('btnSaveNext').disabled = true;
+      showStep(3);
+    };
+
+    function updateSaveGate() {
+      const ok =
+        document.getElementById('chkDl').checked &&
+        document.getElementById('chkNoShare').checked &&
+        document.getElementById('chkUnderstand').checked;
+      document.getElementById('btnSaveNext').disabled = !ok;
+    }
+    ['chkDl', 'chkNoShare', 'chkUnderstand'].forEach((id) => {
+      document.getElementById(id).onchange = updateSaveGate;
+    });
+
+    document.getElementById('btnCopySk').onclick = async () => {
+      await navigator.clipboard.writeText(identity.secretKey);
+      flash('Secret copied — paste into a password manager, then clear clipboard later.', 'warn');
+    };
+    document.getElementById('btnDlJson').onclick = () => {
+      cryptoApi.downloadJson('family-vote-SECRET-backup.json', {
+        ...identity,
+        label: inviteMeta?.label,
+        warning: 'SECRET — do not share',
+      });
+      flash('Backup JSON downloaded. Keep it private.', 'ok');
+    };
+    document.getElementById('btnDlPaper').onclick = () => {
+      cryptoApi.downloadText(
+        'family-vote-paper-wallet.txt',
+        cryptoApi.buildPaperWallet({ ...identity, label: inviteMeta?.label })
+      );
+      flash('Paper wallet downloaded.', 'ok');
+    };
+
+    document.getElementById('btnSaveNext').onclick = () => {
+      document.getElementById('regSummary').innerHTML = `
+        <div class="cell"><div class="lbl">Invite for</div><div class="val">${inviteMeta?.label || '—'}</div></div>
+        <div class="cell"><div class="lbl">Public key</div><div class="val mono">${identity.publicKey.slice(0, 18)}…</div></div>
+        <div class="cell"><div class="lbl">Secret uploaded?</div><div class="val">No — never</div></div>`;
+      showStep(4);
+    };
+
+    document.getElementById('btnRegister').onclick = async () => {
+      try {
+        if (!inviteToken || !identity?.publicKey) throw new Error('Missing invite or key');
+        flash('Registering public key…', 'info');
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: inviteToken, publicKey: identity.publicKey }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Register failed');
+        identity = {
+          ...identity,
+          label: data.label,
+          electionId: data.electionId,
+          registeredAt: new Date().toISOString(),
+          registered: true,
+        };
+        cryptoApi.saveIdentity(identity);
+        document.getElementById('regDone').hidden = false;
+        document.getElementById('regMsg').textContent =
+          `You’re on the list as “${data.label}”. Chain block #${data.chainBlock}. Secret was not uploaded.`;
+        document.getElementById('btnRegNext').disabled = false;
+        document.getElementById('btnRegister').disabled = true;
+        flash('Registered. Next: wait for voting to open, then cast your ballot.', 'ok');
+      } catch (e) {
+        flash(e.message || String(e), 'err');
+      }
+    };
+
+    document.getElementById('btnRegNext').onclick = () => {
+      showStep(5);
+      loadVoteState();
+    };
+
+    async function loadVoteState() {
+      const res = await fetch('/api/vote/context');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        document.getElementById('voteWait').hidden = false;
+        document.getElementById('voteOpen').hidden = true;
+        return;
+      }
+      document.getElementById('voteWait').hidden = true;
+      document.getElementById('voteOpen').hidden = false;
+      document.getElementById('voteTitle').textContent =
+        data.title + ' · ring of ' + data.ringSize + ' voters';
+      window.__voteCtx = data;
+      const box = document.getElementById('candidates');
+      box.innerHTML = '';
+      selected = null;
+      document.getElementById('btnCast').disabled = true;
+      for (const c of data.candidates) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'candidate';
+        b.textContent = c;
+        b.onclick = () => {
+          selected = c;
+          box.querySelectorAll('.candidate').forEach((x) => x.classList.remove('selected'));
+          b.classList.add('selected');
+          document.getElementById('btnCast').disabled = false;
+        };
+        box.appendChild(b);
+      }
+      flash('Voting is open. Pick a choice and cast your ballot.', 'ok');
+    }
+
+    document.getElementById('btnRefreshVote').onclick = () => loadVoteState();
+
+    document.getElementById('btnCast').onclick = async () => {
+      try {
+        if (!identity?.secretKey) throw new Error('No secret key on this device');
+        if (!selected) throw new Error('Pick a choice');
+        const ctx = window.__voteCtx;
+        if (!ctx) throw new Error('Voting context missing — refresh');
+        const pk = cryptoApi.publicKeyFromSecret(identity.secretKey);
+        if (!ctx.ring.includes(pk)) {
+          throw new Error(
+            'This key is not in the frozen ring. Did you register before voting opened, on this same key?'
+          );
+        }
+        flash('Signing ballot on your device…', 'info');
+        const signature = cryptoApi.signVote({
+          electionId: ctx.electionId,
+          choice: selected,
+          ringPublicKeys: ctx.ring,
+          secretKeyHex: identity.secretKey,
+        });
+        const res = await fetch('/api/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ signature }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Vote rejected');
+        document.getElementById('voteReceipt').hidden = false;
+        document.getElementById('receiptBox').textContent = JSON.stringify(data.receipt, null, 2);
+        document.getElementById('btnCast').disabled = true;
+        flash('Ballot recorded on the chain.', 'ok');
+      } catch (e) {
+        flash(e.message || String(e), 'err');
+      }
+    };
+
+    // If URL has invite, jump to invite step
+    if (preInvite) {
+      showStep(1);
+      document.getElementById('btnLookup').click();
+    } else {
+      showStep(0);
+    }
+  </script>
+</body>
+</html>
