@@ -5,8 +5,320 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Vote — Family Vote</title>
   <link rel="stylesheet" href="/css/app.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "@noble/curves/secp256k1.js": "/vendor/@noble/curves/esm/secp256k1.js",
+      "@noble/curves/": "/vendor/@noble/curves/esm/",
+      "@noble/hashes/sha2.js": "/vendor/@noble/hashes/esm/sha2.js",
+      "@noble/hashes/sha256.js": "/vendor/@noble/hashes/esm/sha256.js",
+      "@noble/hashes/hmac.js": "/vendor/@noble/hashes/esm/hmac.js",
+      "@noble/hashes/utils.js": "/vendor/@noble/hashes/esm/utils.js",
+      "@noble/hashes/utils": "/vendor/@noble/hashes/esm/utils.js",
+      "@noble/hashes/crypto.js": "/vendor/@noble/hashes/esm/crypto.js",
+      "@noble/hashes/crypto": "/vendor/@noble/hashes/esm/crypto.js",
+      "@noble/hashes/": "/vendor/@noble/hashes/esm/"
+    }
+  }
+  </script>
 </head>
 <body>
-<p>size-probe</p>
+  <div class="wrap">
+    <nav class="top">
+      <a class="brand" href="/">Family ZKP Vote</a>
+      <div class="links">
+        <a href="/admin.html">Admin</a>
+        <a href="/keys.html">Keys</a>
+        <a href="/register.html">Register</a>
+        <a href="/offline.html">Offline sign</a>
+        <a href="/vote.html">Vote</a>
+        <a href="/results.html">Results</a>
+      </div>
+    </nav>
+
+    <div class="card">
+      <h1>Cast your ballot</h1>
+      <p class="muted">
+        Two paths, same crypto: sign <strong style="color:var(--text)">in this browser</strong>, or
+        <strong style="color:var(--text)">submit a pre-signed offline package</strong>.
+        The server only receives a ring signature — never your secret key.
+      </p>
+      <div class="row" id="meta"></div>
+      <div id="msg"></div>
+    </div>
+
+    <div class="card">
+      <div class="tabs" id="modeTabs">
+        <button type="button" class="active" data-mode="online">Online sign &amp; submit</button>
+        <button type="button" data-mode="package">Submit offline ballot package</button>
+        <button type="button" data-mode="export">Export context for offline</button>
+      </div>
+
+      <!-- ONLINE -->
+      <div id="mode-online">
+        <div class="teach">
+          <div class="icon">Σ</div>
+          <div>
+            <strong>Online path</strong>
+            <p>
+              Browser loads the frozen ring, you unlock/paste <code class="mono">sk</code>, pick a choice.
+              Client builds message <code class="mono">vote|…|keyImage</code>, hashes it internally inside the LSAG transcript,
+              POSTs only the signature.
+            </p>
+          </div>
+        </div>
+
+        <h2>Secret key</h2>
+        <label for="secret">Secret key (hex) or unlock via Keys</label>
+        <textarea id="secret" rows="2" class="mono" placeholder="paste secret, or leave filled from localStorage"></textarea>
+        <div class="row">
+          <label class="btn secondary" style="cursor:pointer;margin:0">
+            Import identity JSON
+            <input type="file" id="file" accept="application/json,.json" hidden />
+          </label>
+          <button class="btn secondary" id="btnUnlock" type="button">Unlock browser vault…</button>
+          <button class="btn secondary" id="btnClear" type="button">Clear saved key</button>
+          <a class="btn secondary" href="/keys.html">Keys workshop</a>
+        </div>
+        <div id="vaultUnlock" hidden style="margin-top:0.75rem">
+          <label for="vpass">Vault passphrase</label>
+          <input id="vpass" type="password" />
+          <button class="btn" id="btnDoUnlock" type="button">Unlock</button>
+        </div>
+
+        <div id="ballotCard" hidden style="margin-top:1.25rem">
+          <h2 id="electionTitle">Election</h2>
+          <p class="muted" id="ringInfo"></p>
+          <div id="candidates"></div>
+          <button class="btn success block" id="btnVote" disabled>Sign &amp; submit ballot</button>
+        </div>
+      </div>
+
+      <!-- PACKAGE -->
+      <div id="mode-package" hidden>
+        <div class="teach">
+          <div class="icon">📦</div>
+          <div>
+            <strong>Offline package path</strong>
+            <p>
+              You already signed on <a href="/offline.html">Offline sign</a> (possibly offline).
+              Upload the ballot JSON. It contains <code class="mono">messageHash</code>, <code class="mono">keyImage</code>, and LSAG fields — not <code class="mono">sk</code>.
+            </p>
+          </div>
+        </div>
+        <label for="pkg">Ballot package JSON</label>
+        <textarea id="pkg" rows="8" class="mono" placeholder='{"type":"zkp-family-vote-ballot",...}'></textarea>
+        <div class="row">
+          <label class="btn secondary" style="cursor:pointer;margin:0">
+            Load ballot file…
+            <input type="file" id="pkgFile" accept="application/json,.json" hidden />
+          </label>
+          <button class="btn success" id="btnSubmitPkg">Verify hashes &amp; submit</button>
+        </div>
+      </div>
+
+      <!-- EXPORT -->
+      <div id="mode-export" hidden>
+        <div class="teach">
+          <div class="icon">⬇</div>
+          <div>
+            <strong>Prepare for offline hash signing</strong>
+            <p>
+              Download the public context pack (ring + candidates + contextHash).
+              Take it to the Offline Signer with your secret. No network needed while signing.
+            </p>
+          </div>
+        </div>
+        <div class="row">
+          <a class="btn" id="btnDlCtx" href="/api/vote/offline-pack">Download offline context pack</a>
+          <a class="btn secondary" href="/offline.html">Open Offline Signer</a>
+        </div>
+        <p class="muted" style="margin-top:0.75rem">Also available as raw API: <code class="mono">GET /api/vote/offline-pack</code></p>
+      </div>
+    </div>
+
+    <div class="card" id="receiptCard" hidden>
+      <h2>Receipt</h2>
+      <p class="muted">Proves inclusion on the file chain without revealing your identity.</p>
+      <pre class="secret-box" id="receipt"></pre>
+      <a class="btn secondary" href="/results.html">View tally &amp; chain</a>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      signVote,
+      publicKeyFromSecret,
+      loadIdentity,
+      saveIdentity,
+      clearIdentity,
+      loadVaultFromBrowser,
+      decryptVault,
+      parseOfflineBallot,
+      sha256Hex,
+    } from '/js/crypto-client.js';
+    import { enableOfflineCache } from '/js/nav.js';
+
+    enableOfflineCache();
+
+    const msg = document.getElementById('msg');
+    const secretEl = document.getElementById('secret');
+    let ctx = null;
+    let selected = null;
+
+    function flash(text, kind = 'info') {
+      msg.innerHTML = `<div class="alert ${kind}">${text}</div>`;
+    }
+
+    document.getElementById('modeTabs').onclick = (e) => {
+      const btn = e.target.closest('button[data-mode]');
+      if (!btn) return;
+      document.querySelectorAll('#modeTabs button').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      ['online', 'package', 'export'].forEach((m) => {
+        document.getElementById('mode-' + m).hidden = m !== btn.dataset.mode;
+      });
+    };
+
+    const id = loadIdentity();
+    if (id?.secretKey) secretEl.value = id.secretKey;
+
+    document.getElementById('file').onchange = async (ev) => {
+      try {
+        const file = ev.target.files?.[0];
+        if (!file) return;
+        const data = JSON.parse(await file.text());
+        if (!data.secretKey) throw new Error('No secretKey in file');
+        secretEl.value = data.secretKey;
+        saveIdentity(data);
+        flash('Backup imported into session.', 'ok');
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnClear').onclick = () => {
+      clearIdentity();
+      secretEl.value = '';
+      flash('Cleared plaintext localStorage key.', 'ok');
+    };
+
+    document.getElementById('btnUnlock').onclick = () => {
+      document.getElementById('vaultUnlock').hidden = false;
+    };
+    document.getElementById('btnDoUnlock').onclick = async () => {
+      try {
+        const vault = loadVaultFromBrowser();
+        if (!vault) throw new Error('No vault in this browser — use Keys page');
+        const id2 = await decryptVault(vault, document.getElementById('vpass').value);
+        secretEl.value = id2.secretKey;
+        flash('Vault unlocked into this form (not re-saved as plaintext unless you import).', 'ok');
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    async function loadContext() {
+      const res = await fetch('/api/vote/context');
+      const data = await res.json();
+      if (!res.ok) {
+        flash(data.error || 'Voting not available', 'warn');
+        document.getElementById('meta').innerHTML = `<span class="pill warn">Closed / unavailable</span>`;
+        document.getElementById('btnDlCtx').classList.add('disabled');
+        return;
+      }
+      ctx = data;
+      document.getElementById('ballotCard').hidden = false;
+      document.getElementById('electionTitle').textContent = data.title;
+      document.getElementById('ringInfo').textContent =
+        `Election ${data.electionId} · ring of ${data.ringSize} keys · offline pack ready`;
+      document.getElementById('meta').innerHTML = `<span class="pill ok">Voting open</span>
+        <span class="pill info">Ring ${data.ringSize}</span>`;
+
+      const box = document.getElementById('candidates');
+      box.innerHTML = '';
+      for (const c of data.candidates) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'candidate';
+        b.textContent = c;
+        b.onclick = () => {
+          selected = c;
+          box.querySelectorAll('.candidate').forEach((el) => el.classList.remove('selected'));
+          b.classList.add('selected');
+          document.getElementById('btnVote').disabled = false;
+        };
+        box.appendChild(b);
+      }
+    }
+
+    async function submitSignature(signature) {
+      const res = await fetch('/api/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signature }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Vote rejected');
+      document.getElementById('receiptCard').hidden = false;
+      document.getElementById('receipt').textContent = JSON.stringify(data.receipt, null, 2);
+      flash(
+        `Ballot accepted at chain block #${data.receipt.blockIndex}. Name not recorded.`,
+        'ok'
+      );
+    }
+
+    document.getElementById('btnVote').onclick = async () => {
+      try {
+        const secretKeyHex = secretEl.value.trim();
+        if (!secretKeyHex) throw new Error('Enter your secret key');
+        if (!selected) throw new Error('Pick a candidate');
+        if (!ctx) throw new Error('No voting context');
+
+        const pk = publicKeyFromSecret(secretKeyHex);
+        if (!ctx.ring.includes(pk)) {
+          throw new Error('This key is not in the frozen voter ring.');
+        }
+
+        flash('Building ring signature (hash-bound message)…', 'info');
+        const signature = signVote({
+          electionId: ctx.electionId,
+          choice: selected,
+          ringPublicKeys: ctx.ring,
+          secretKeyHex,
+        });
+        flash(
+          `Message hash ${signature.messageHash.slice(0, 16)}… — submitting proof only…`,
+          'info'
+        );
+        await submitSignature(signature);
+        document.getElementById('btnVote').disabled = true;
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('pkgFile').onchange = async (ev) => {
+      const f = ev.target.files?.[0];
+      if (!f) return;
+      document.getElementById('pkg').value = await f.text();
+    };
+
+    document.getElementById('btnSubmitPkg').onclick = async () => {
+      try {
+        const obj = parseOfflineBallot(JSON.parse(document.getElementById('pkg').value));
+        const mh = sha256Hex(obj.signature.message || '');
+        if (obj.messageHash !== mh) {
+          throw new Error('messageHash does not match signature.message — refuse to submit');
+        }
+        flash(`Package OK · messageHash ${obj.messageHash.slice(0, 16)}… — submitting…`, 'info');
+        await submitSignature(obj.signature);
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    loadContext().catch((e) => flash(e.message, 'err'));
+  </script>
 </body>
 </html>
