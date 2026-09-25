@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offline Hash Signing — Family Vote</title>
+  <link rel="stylesheet" href="/css/app.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "@noble/curves/secp256k1.js": "/vendor/@noble/curves/esm/secp256k1.js",
+      "@noble/curves/": "/vendor/@noble/curves/esm/",
+      "@noble/hashes/sha2.js": "/vendor/@noble/hashes/esm/sha2.js",
+      "@noble/hashes/sha256.js": "/vendor/@noble/hashes/esm/sha256.js",
+      "@noble/hashes/hmac.js": "/vendor/@noble/hashes/esm/hmac.js",
+      "@noble/hashes/utils.js": "/vendor/@noble/hashes/esm/utils.js",
+      "@noble/hashes/utils": "/vendor/@noble/hashes/esm/utils.js",
+      "@noble/hashes/crypto.js": "/vendor/@noble/hashes/esm/crypto.js",
+      "@noble/hashes/crypto": "/vendor/@noble/hashes/esm/crypto.js",
+      "@noble/hashes/": "/vendor/@noble/hashes/esm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="top">
+      <a class="brand" href="/">Family ZKP Vote</a>
+      <div class="links">
+        <a href="/admin.html">Admin</a>
+        <a href="/keys.html">Keys</a>
+        <a href="/register.html">Register</a>
+        <a href="/offline.html">Offline sign</a>
+        <a href="/vote.html">Vote</a>
+        <a href="/results.html">Results</a>
+      </div>
+    </nav>
+
+    <div class="card">
+      <h1>Offline hash signing</h1>
+      <p class="muted">
+        Sign a ballot <strong style="color:var(--text)">without sending your secret key anywhere</strong>.
+        While online once: download the public context pack (ring + candidates).
+        Then go offline, sign, export a ballot package. Later, submit only that package.
+      </p>
+      <div class="flow">
+        <span class="step">Download context</span><span class="arrow">→</span>
+        <span class="step">Airplane mode</span><span class="arrow">→</span>
+        <span class="step">Sign locally</span><span class="arrow">→</span>
+        <span class="step">Export ballot JSON</span><span class="arrow">→</span>
+        <span class="step">Online submit</span>
+      </div>
+      <div class="row">
+        <span class="pill" id="netPill">Network…</span>
+        <span class="pill info" id="ctxPill">No context loaded</span>
+      </div>
+      <div id="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>What “hash signing” means on this page</h2>
+      <div class="teach">
+        <div class="icon">1</div>
+        <div>
+          <strong>Public context</strong>
+          <p>Election id, candidate list, and the frozen public-key <em>ring</em>. Anyone can have this file — it contains no secrets.</p>
+        </div>
+      </div>
+      <div class="teach">
+        <div class="icon">2</div>
+        <div>
+          <strong>Local secret</strong>
+          <p>Your <code class="mono">sk</code> stays in memory (paste, vault unlock, or file). It is used only inside this tab to build the ring signature.</p>
+        </div>
+      </div>
+      <div class="teach">
+        <div class="icon">3</div>
+        <div>
+          <strong>Message &amp; hash</strong>
+          <p>
+            Ballot message: <code class="mono">vote|electionId|choice|keyImage</code>.
+            We display <code class="mono">SHA-256(message)</code> so you can see the digest you are binding to.
+            The LSAG signature proves a ring member authorized that message; the <em>key image</em> prevents a second ballot.
+          </p>
+        </div>
+      </div>
+      <div class="diagram">offline-context.json          your device                 ballot-package.json
+(public ring)           sk + choice → signVote()        (signature only)
+     │                         │                              │
+     └──────── load ───────────┤                              │
+                               ├─ messageHash = H(message)    │
+                               ├─ keyImage = sk·Hp(election,pk)
+                               └─ LSAG(σ) ────────────────────┘
+                                                              │
+online later: POST /api/vote { signature: σ }  ◄──────────────┘
+              server never sees sk</div>
+    </div>
+
+    <div class="card">
+      <h2>A · Load offline context</h2>
+      <div class="row">
+        <a class="btn secondary" href="/api/vote/offline-pack" id="dlPack">Download pack from server</a>
+        <label class="btn secondary" style="cursor:pointer;margin:0">
+          Load context file…
+          <input type="file" id="ctxFile" accept="application/json,.json" hidden />
+        </label>
+      </div>
+      <p class="muted" style="margin-top:0.75rem">
+        Download requires the election to be <strong style="color:var(--text)">open</strong>.
+        If you are already offline, use a pack you saved earlier.
+      </p>
+      <div id="ctxInfo" class="muted"></div>
+    </div>
+
+    <div class="card">
+      <h2>B · Unlock / paste secret key</h2>
+      <div class="tabs" id="keyTabs">
+        <button type="button" class="active" data-tab="paste">Paste secret</button>
+        <button type="button" data-tab="vault">Vault</button>
+        <button type="button" data-tab="file">Identity file</button>
+      </div>
+      <div id="tab-paste">
+        <label for="secret">Secret key (hex)</label>
+        <textarea id="secret" rows="2" class="mono" placeholder="never share this"></textarea>
+      </div>
+      <div id="tab-vault" hidden>
+        <label for="vpass">Vault unlock passphrase</label>
+        <input id="vpass" type="password" />
+        <div class="row">
+          <button class="btn secondary" id="btnUnlockV" type="button">Unlock browser vault</button>
+          <label class="btn secondary" style="cursor:pointer;margin:0">
+            Vault file…
+            <input type="file" id="vaultFile" accept="application/json,.json" hidden />
+          </label>
+        </div>
+      </div>
+      <div id="tab-file" hidden>
+        <label class="btn secondary" style="cursor:pointer;margin:0">
+          Load identity JSON…
+          <input type="file" id="idFile" accept="application/json,.json" hidden />
+        </label>
+      </div>
+      <p class="muted" id="pkHint" style="margin-top:0.75rem"></p>
+    </div>
+
+    <div class="card" id="ballotCard" hidden>
+      <h2>C · Choose &amp; sign (local only)</h2>
+      <p class="muted" id="electionTitle"></p>
+      <div id="candidates"></div>
+      <button class="btn success block" id="btnSign" disabled>Hash-sign ballot offline</button>
+    </div>
+
+    <div class="card" id="outCard" hidden>
+      <h2>D · Ballot package (safe to move online)</h2>
+      <div class="kpi" id="hashKpi"></div>
+      <p class="muted">This JSON has <strong style="color:var(--text)">no secret key</strong>. Submit it on the Vote page when you are online.</p>
+      <pre class="secret-box" id="ballotOut" style="max-height:220px;overflow:auto"></pre>
+      <div class="row">
+        <button class="btn" id="btnDlBallot">Download ballot package</button>
+        <button class="btn secondary" id="btnCopyBallot">Copy JSON</button>
+        <a class="btn secondary" href="/vote.html">Go online → submit</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      publicKeyFromSecret,
+      buildOfflineBallot,
+      downloadJson,
+      loadVaultFromBrowser,
+      decryptVault,
+      loadIdentity,
+      fingerprintPublicKey,
+      contextHash,
+    } from '/js/crypto-client.js';
+    import { enableOfflineCache } from '/js/nav.js';
+
+    enableOfflineCache();
+
+    const msg = document.getElementById('msg');
+    let ctx = null;
+    let selected = null;
+    let lastBallot = null;
+
+    function flash(t, k = 'info') {
+      msg.innerHTML = `<div class="alert ${k}">${t}</div>`;
+    }
+
+    function updateNet() {
+      const online = navigator.onLine;
+      const p = document.getElementById('netPill');
+      p.textContent = online ? 'Online' : 'Offline — signing still works';
+      p.className = online ? 'pill ok' : 'pill warn';
+    }
+    updateNet();
+    window.addEventListener('online', updateNet);
+    window.addEventListener('offline', updateNet);
+
+    // key tabs
+    document.getElementById('keyTabs').onclick = (e) => {
+      const btn = e.target.closest('button[data-tab]');
+      if (!btn) return;
+      document.querySelectorAll('#keyTabs button').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      ['paste', 'vault', 'file'].forEach((t) => {
+        document.getElementById('tab-' + t).hidden = t !== btn.dataset.tab;
+      });
+    };
+
+    const existing = loadIdentity();
+    if (existing?.secretKey) {
+      document.getElementById('secret').value = existing.secretKey;
+      hintPk(existing.secretKey);
+    }
+
+    function hintPk(sk) {
+      try {
+        const pk = publicKeyFromSecret(sk.trim());
+        document.getElementById('pkHint').textContent =
+          'Public key fingerprint: ' + fingerprintPublicKey(pk);
+      } catch {
+        document.getElementById('pkHint').textContent = '';
+      }
+    }
+    document.getElementById('secret').oninput = (e) => hintPk(e.target.value);
+
+    function applyContext(pack) {
+      if (pack.type !== 'zkp-family-vote-offline-context') {
+        throw new Error('Not an offline context pack');
+      }
+      const h = contextHash(pack);
+      if (pack.contextHash && pack.contextHash !== h) {
+        throw new Error('Context hash mismatch — file may be corrupted');
+      }
+      ctx = pack;
+      document.getElementById('ctxPill').textContent = `Context ${pack.electionId}`;
+      document.getElementById('ctxPill').className = 'pill ok';
+      document.getElementById('ctxInfo').innerHTML = `
+        <strong style="color:var(--text)">${pack.title || 'Election'}</strong><br/>
+        Ring size ${pack.ringSize || pack.ring?.length} ·
+        contextHash <span class="mono">${pack.contextHash || h}</span>`;
+      document.getElementById('ballotCard').hidden = false;
+      document.getElementById('electionTitle').textContent = pack.title || pack.electionId;
+      const box = document.getElementById('candidates');
+      box.innerHTML = '';
+      selected = null;
+      document.getElementById('btnSign').disabled = true;
+      for (const c of pack.candidates) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'candidate';
+        b.textContent = c;
+        b.onclick = () => {
+          selected = c;
+          box.querySelectorAll('.candidate').forEach((el) => el.classList.remove('selected'));
+          b.classList.add('selected');
+          document.getElementById('btnSign').disabled = false;
+        };
+        box.appendChild(b);
+      }
+      flash('Context loaded. You can disconnect from the network before signing.', 'ok');
+    }
+
+    document.getElementById('ctxFile').onchange = async (ev) => {
+      try {
+        const f = ev.target.files?.[0];
+        if (!f) return;
+        applyContext(JSON.parse(await f.text()));
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('dlPack').onclick = async (e) => {
+      // let default navigation download if online; also try fetch for apply
+      if (!navigator.onLine) {
+        e.preventDefault();
+        flash('You are offline — load a context file you saved earlier.', 'warn');
+      }
+    };
+
+    // If user wants load via fetch into memory
+    document.getElementById('dlPack').addEventListener('contextmenu', () => {});
+
+    async function unlockVault(vault, pass) {
+      const id = await decryptVault(vault, pass);
+      document.getElementById('secret').value = id.secretKey;
+      hintPk(id.secretKey);
+      flash('Vault unlocked into the paste field (session memory).', 'ok');
+    }
+
+    document.getElementById('btnUnlockV').onclick = async () => {
+      try {
+        const vault = loadVaultFromBrowser();
+        if (!vault) throw new Error('No browser vault');
+        await unlockVault(vault, document.getElementById('vpass').value);
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+    document.getElementById('vaultFile').onchange = async (ev) => {
+      try {
+        const f = ev.target.files?.[0];
+        if (!f) return;
+        await unlockVault(JSON.parse(await f.text()), document.getElementById('vpass').value);
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+    document.getElementById('idFile').onchange = async (ev) => {
+      try {
+        const f = ev.target.files?.[0];
+        if (!f) return;
+        const id = JSON.parse(await f.text());
+        if (!id.secretKey) throw new Error('No secretKey in file');
+        document.getElementById('secret').value = id.secretKey;
+        hintPk(id.secretKey);
+        flash('Identity file loaded.', 'ok');
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnSign').onclick = () => {
+      try {
+        if (!ctx) throw new Error('Load context first');
+        if (!selected) throw new Error('Pick a candidate');
+        const secretKeyHex = document.getElementById('secret').value.trim();
+        if (!secretKeyHex) throw new Error('Provide secret key');
+
+        const pk = publicKeyFromSecret(secretKeyHex);
+        if (!ctx.ring.includes(pk)) {
+          throw new Error('This public key is not in the frozen ring');
+        }
+
+        lastBallot = buildOfflineBallot({
+          offlineContext: ctx,
+          choice: selected,
+          secretKeyHex,
+        });
+
+        document.getElementById('outCard').hidden = false;
+        document.getElementById('ballotOut').textContent = JSON.stringify(lastBallot, null, 2);
+        document.getElementById('hashKpi').innerHTML = `
+          <div class="cell"><div class="lbl">Choice</div><div class="val">${selected}</div></div>
+          <div class="cell"><div class="lbl">Message hash</div><div class="val mono">${lastBallot.messageHash.slice(0, 20)}…</div></div>
+          <div class="cell"><div class="lbl">Key image</div><div class="val mono">${lastBallot.signature.keyImage.slice(0, 16)}…</div></div>
+          <div class="cell"><div class="lbl">Context hash</div><div class="val mono">${lastBallot.contextHash.slice(0, 16)}…</div></div>
+        `;
+        flash('Signed offline. Download the ballot package — it does not contain your secret.', 'ok');
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnDlBallot').onclick = () => {
+      if (!lastBallot) return;
+      downloadJson(`ballot-${lastBallot.signature.electionId}.json`, lastBallot);
+    };
+    document.getElementById('btnCopyBallot').onclick = async () => {
+      if (!lastBallot) return;
+      await navigator.clipboard.writeText(JSON.stringify(lastBallot, null, 2));
+      flash('Ballot JSON copied.', 'ok');
+    };
+  </script>
+</body>
+</html>
