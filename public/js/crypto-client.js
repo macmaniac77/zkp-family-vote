@@ -25,7 +25,7 @@ const IDENTITY_KEY = 'zkp_family_vote_identity';
 const VAULT_KEY = 'zkp_family_vote_vault';
 const PBKDF2_ITERATIONS = 210_000;
 
-// ──────────────────────────────────────────────────────────────
+// ─── primitives ───────────────────────────────────────────────
 
 function modN(x) {
   let v = x % CURVE_ORDER;
@@ -128,7 +128,8 @@ export function generateKeypair() {
  */
 export async function deriveKeypairFromPassphrase(passphrase, saltHex = null) {
   if (!passphrase || passphrase.length < 8) {
-    throw new Error('Passphrase must be at least 8 characters');\n  }
+    throw new Error('Passphrase must be at least 8 characters');
+  }
   const salt = saltHex ? hexToBytes(saltHex) : randomBytes(16);
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
@@ -213,7 +214,8 @@ async function deriveAesKey(passphrase, saltBytes) {
  */
 export async function encryptVault(identity, unlockPassphrase) {
   if (!unlockPassphrase || unlockPassphrase.length < 8) {
-    throw new Error('Unlock passphrase must be at least 8 characters');\n  }
+    throw new Error('Unlock passphrase must be at least 8 characters');
+  }
   const salt = randomBytes(16);
   const iv = randomBytes(12);
   const key = await deriveAesKey(unlockPassphrase, salt);
@@ -309,7 +311,7 @@ export function buildPaperWallet(identity) {
     lines.push(identity.salt);
     lines.push('');
   }
-  lines.push('── NOTES ────────────────────────────────');
+  lines.push('── NOTES ─────────────────────────────────');
   lines.push('• Server never receives this secret.');
   lines.push('• Voting uses a ring signature + key image.');
   lines.push('• Lose this → you cannot cast a ballot.');
