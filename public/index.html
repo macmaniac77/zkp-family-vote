@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Family Vote — Start here</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div id="nav"></div>
+
+    <div class="card">
+      <h1>Family Vote — start here</h1>
+      <p class="muted">
+        A guided household election: private ballots, real crypto, votes written to a file chain.
+        Pick your role, then follow the steps. Tap any <strong style="color:var(--text)">?</strong> for a plain-language picture.
+      </p>
+      <div class="row" style="margin-top:0.75rem">
+        <span class="pill" id="statusPill">Loading…</span>
+        <button type="button" class="help-q" data-help="journey" title="How does this whole thing work?">?</button>
+        <span class="muted" style="font-size:0.85rem">How the whole process works</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Who are you? <button type="button" class="help-q" data-help="roles">?</button></h2>
+      <p class="muted">Choose one path. You can always come back here.</p>
+      <div class="role-pick" style="margin-top:1rem">
+        <a class="primary" href="/voter.html">
+          <h3>I was invited to vote</h3>
+          <p>Someone sent you a link. You’ll save a secret key, register, then cast one ballot. Start the voter wizard →</p>
+        </a>
+        <a href="/admin.html">
+          <h3>I organize the election</h3>
+          <p>You’re the household admin. Create the election, send invites, open and close voting →</p>
+        </a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Step-by-step (everyone) <button type="button" class="help-q" data-help="journey">?</button></h2>
+      <div class="journey">
+        <div class="journey-step">
+          <div class="journey-n">1</div>
+          <div>
+            <h3>Organizer sets up <button type="button" class="help-q" data-help="admin_pass">?</button></h3>
+            <p>Pick a long admin passphrase (save it!). Create an election with a title and choices.</p>
+            <span class="journey-who">Organizer only</span>
+          </div>
+        </div>
+        <div class="journey-step">
+          <div class="journey-n">2</div>
+          <div>
+            <h3>Organizer sends invites <button type="button" class="help-q" data-help="invite">?</button></h3>
+            <p>One invite link per person (e.g. “Alex”). Copy each link and send it. Links are shown once.</p>
+            <span class="journey-who">Organizer only</span>
+          </div>
+        </div>
+        <div class="journey-step">
+          <div class="journey-n">3</div>
+          <div>
+            <h3>Voter creates a key <button type="button" class="help-q" data-help="secret_key">?</button></h3>
+            <p>Open your invite link. The wizard generates a secret key on your device — not on the server.</p>
+            <span class="journey-who">Each voter</span>
+          </div>
+        </div>
+        <div class="journey-step">
+          <div class="journey-n">4</div>
+          <div>
+            <h3>Voter saves the secret <button type="button" class="help-q" data-help="save_backup">?</button></h3>
+            <p>Download or copy the backup. If you lose it, you can’t vote. The wizard won’t continue until you confirm.</p>
+            <span class="journey-who">Each voter</span>
+          </div>
+        </div>
+        <div class="journey-step">
+          <div class="journey-n">5</div>
+          <div>
+            <h3>Voter registers the public half <button type="button" class="help-q" data-help="register">?</button></h3>
+            <p>Only the public key is uploaded. Your name is not tied to a ballot on the chain. Invite is used up.</p>
+            <span class="journey-who">Each voter</span>
+          </div>
+        </div>
+        <div class="journey-step">
+          <div class="journey-n">6</div>
+          <div>
+            <h3>Organizer opens voting <button type="button" class="help-q" data-help="open_close">?</button></h3>
+            <p>When everyone has registered, freeze the roster and open ballots. No new people after this.</p>
+            <span class="journey-who">Organizer only</span>
+          </div>
+        </div>
+        <div class="journey-step">
+          <div class="journey-n">7</div>
+          <div>
+            <h3>Voters cast ballots <button type="button" class="help-q" data-help="vote">?</button></h3>
+            <p>Pick a choice. Your device signs a proof. Server never gets your secret or writes your name next to the vote.</p>
+            <span class="journey-who">Each voter</span>
+          </div>
+        </div>
+        <div class="journey-step">
+          <div class="journey-n">8</div>
+          <div>
+            <h3>See results on the chain <button type="button" class="help-q" data-help="chain">?</button></h3>
+            <p>Tally is public. Ballots are anonymous. Everything lands in a hash-linked file on the server.</p>
+            <span class="journey-who">Anyone</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>What you must never mix up</h2>
+      <div class="grid-2">
+        <div>
+          <h3 style="margin-top:0">Secret key <button type="button" class="help-q" data-help="secret_key">?</button></h3>
+          <p class="muted">Stays with you. Used to sign. Never chat/email it.</p>
+        </div>
+        <div>
+          <h3 style="margin-top:0">Public key <button type="button" class="help-q" data-help="public_key">?</button></h3>
+          <p class="muted">Safe to send to the server. Wizard sends it for you at register.</p>
+        </div>
+        <div>
+          <h3 style="margin-top:0">Invite link <button type="button" class="help-q" data-help="invite">?</button></h3>
+          <p class="muted">One-time ticket from the organizer. Not your vote.</p>
+        </div>
+        <div>
+          <h3 style="margin-top:0">Admin passphrase <button type="button" class="help-q" data-help="admin_pass">?</button></h3>
+          <p class="muted">Organizer only. Not the same as a voter secret key.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Quick links</h2>
+      <div class="row">
+        <a class="btn" href="/voter.html">Voter wizard</a>
+        <a class="btn secondary" href="/admin.html">Organizer</a>
+        <a class="btn secondary" href="/results.html">Results &amp; chain</a>
+        <a class="btn secondary" href="/keys.html">Advanced: Keys lab</a>
+        <a class="btn secondary" href="/offline.html">Advanced: Offline sign</a>
+      </div>
+      <p class="muted" style="margin-top:1rem;margin-bottom:0;font-size:0.85rem">
+        Advanced pages are optional. New users should stay on the voter wizard or organizer path.
+      </p>
+    </div>
+
+    <footer class="note">
+      Single-server household tool. Crypto protects name↔ballot linkage on the stored chain; the operator can still see network metadata.
+    </footer>
+  </div>
+
+  <script type="module">
+    import { wizardNav, initWizardPage } from '/js/wizard-ui.js';
+    document.getElementById('nav').innerHTML = wizardNav('home');
+    initWizardPage();
+
+    try {
+      const s = await fetch('/api/status').then((r) => r.json());
+      const pill = document.getElementById('statusPill');
+      if (!s.bootstrapped) {
+        pill.textContent = 'Not set up yet — organizer goes first';
+        pill.className = 'pill warn';
+      } else if (!s.election) {
+        pill.textContent = 'Ready — organizer should create an election';
+        pill.className = 'pill info';
+      } else {
+        pill.textContent = `${s.election.title} · ${s.election.status} · ${s.election.voterCount || 0} registered`;
+        pill.className =
+          s.election.status === 'open'
+            ? 'pill ok'
+            : s.election.status === 'registration'
+              ? 'pill info'
+              : 'pill';
+      }
+    } catch {
+      document.getElementById('statusPill').textContent = 'Server offline';
+      document.getElementById('statusPill').className = 'pill bad';
+    }
+  </script>
+</body>
+</html>
