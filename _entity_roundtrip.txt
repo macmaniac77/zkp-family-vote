@@ -1,0 +1,4 @@
+line1
+test &amp; keep
+test &lt;tag&gt;
+test "q"
