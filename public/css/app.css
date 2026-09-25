@@ -542,7 +542,7 @@ footer.note {
   margin: 1.25rem 0;
 }
 
-/* ── Wizard chrome ─────────────────────────────────────────────── */
+/* ── Wizard chrome ─────────────────────────────────────────── */
 
 .wizard-nav a.nav-active {
   color: var(--text);
