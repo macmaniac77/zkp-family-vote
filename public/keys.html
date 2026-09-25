@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keys — Create &amp; Store — Family Vote</title>
+  <link rel="stylesheet" href="/css/app.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "@noble/curves/secp256k1.js": "/vendor/@noble/curves/esm/secp256k1.js",
+      "@noble/curves/": "/vendor/@noble/curves/esm/",
+      "@noble/hashes/sha2.js": "/vendor/@noble/hashes/esm/sha2.js",
+      "@noble/hashes/sha256.js": "/vendor/@noble/hashes/esm/sha256.js",
+      "@noble/hashes/hmac.js": "/vendor/@noble/hashes/esm/hmac.js",
+      "@noble/hashes/utils.js": "/vendor/@noble/hashes/esm/utils.js",
+      "@noble/hashes/utils": "/vendor/@noble/hashes/esm/utils.js",
+      "@noble/hashes/crypto.js": "/vendor/@noble/hashes/esm/crypto.js",
+      "@noble/hashes/crypto": "/vendor/@noble/hashes/esm/crypto.js",
+      "@noble/hashes/": "/vendor/@noble/hashes/esm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="top">
+      <a class="brand" href="/">Family ZKP Vote</a>
+      <div class="links">
+        <a href="/admin.html">Admin</a>
+        <a href="/keys.html">Keys</a>
+        <a href="/register.html">Register</a>
+        <a href="/offline.html">Offline sign</a>
+        <a href="/vote.html">Vote</a>
+        <a href="/results.html">Results</a>
+      </div>
+    </nav>
+
+    <div class="card">
+      <h1>Key creation &amp; storage</h1>
+      <p class="muted">
+        Your <strong style="color:var(--text)">secret key</strong> is the only thing that can prove you are an eligible voter.
+        The server is designed to <em>never</em> receive it — only your public key (at registration) and later a ring signature (at vote time).
+      </p>
+      <div class="flow">
+        <span class="step">1 · Create key</span><span class="arrow">→</span>
+        <span class="step">2 · Store safely</span><span class="arrow">→</span>
+        <span class="step">3 · Register public key</span><span class="arrow">→</span>
+        <span class="step">4 · Sign ballot (online or offline)</span>
+      </div>
+      <div id="msg"></div>
+      <div class="row">
+        <span class="pill" id="swPill">Offline cache…</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>How keys work here</h2>
+      <div class="diagram">Device (you)                         Server                         Chain file
+─────────────                         ──────                         ──────────
+secret key  sk  ──never──►            
+public key  pk  ──────────►  store pk  ──────────►  registration block
+                (register)
+
+later: sign(choice, ring, sk)
+  → signature σ, key image I
+  σ + choice + I  ─────────►  verify σ  ─────────►  vote block
+  (sk not included)</div>
+      <div class="teach">
+        <div class="icon">Σ</div>
+        <div>
+          <strong>Offline hash signing</strong>
+          <p>
+            When you vote offline, the browser hashes the ballot message
+            <code class="mono">vote|electionId|choice|keyImage</code> into a
+            <em>message hash</em>, then builds a linkable ring signature over it.
+            You export a <strong style="color:var(--text)">ballot package</strong> that contains only
+            the signature + hashes — not <code class="mono">sk</code>. Upload that package later from any online device.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- CREATE -->
+    <div class="card">
+      <h2>1 · Choose a creation method</h2>
+      <div class="method-grid" id="keyMethods"></div>
+
+      <div id="panel-random" class="key-panel">
+        <div class="teach">
+          <div class="icon">🎲</div>
+          <div>
+            <strong>Random (recommended)</strong>
+            <p>CSPRNG → 32 bytes → secp256k1 scalar. Highest entropy. If you lose the backup, the key is gone forever.</p>
+          </div>
+        </div>
+        <button class="btn success" id="btnRandom">Generate random keypair</button>
+      </div>
+
+      <div id="panel-passphrase" class="key-panel" hidden>
+        <div class="teach">
+          <div class="icon">🔑</div>
+          <div>
+            <strong>Passphrase-derived</strong>
+            <p>
+              PBKDF2-HMAC-SHA-256 with <strong style="color:var(--text)">210,000 iterations</strong> stretches your passphrase
+              with a random salt. Same passphrase + salt always yields the same secret. Store the salt with the backup (it is public).
+            </p>
+          </div>
+        </div>
+        <label for="phrase">Long passphrase (min 8 chars — use a sentence)</label>
+        <input id="phrase" type="password" autocomplete="new-password" placeholder="correct horse battery staple …" />
+        <label for="phrase2">Confirm passphrase</label>
+        <input id="phrase2" type="password" autocomplete="new-password" />
+        <label for="saltIn">Salt (hex) — leave blank to generate new</label>
+        <input id="saltIn" class="mono" placeholder="optional existing salt to re-derive" />
+        <button class="btn success" id="btnDerive">Derive keypair</button>
+      </div>
+
+      <div id="panel-import" class="key-panel" hidden>
+        <div class="teach">
+          <div class="icon">📥</div>
+          <div>
+            <strong>Import</strong>
+            <p>Paste secret hex from a paper wallet or JSON backup. Public key is recomputed locally for a sanity check.</p>
+          </div>
+        </div>
+        <label for="importSk">Secret key (hex)</label>
+        <textarea id="importSk" rows="3" class="mono" placeholder="64 hex chars"></textarea>
+        <button class="btn success" id="btnImport">Import secret</button>
+      </div>
+    </div>
+
+    <!-- ACTIVE KEY -->
+    <div class="card" id="activeCard" hidden>
+      <h2>Active key (this session)</h2>
+      <div class="kpi" id="kpi"></div>
+      <div class="alert warn">
+        The secret below is shown so you can back it up. Prefer the encrypted vault or paper export — avoid screenshots to cloud photos.
+      </div>
+      <label>Secret key</label>
+      <div class="secret-box" id="secretBox"></div>
+      <div class="row" style="margin-top:0.75rem">
+        <button class="btn secondary" id="btnCopySk">Copy secret</button>
+        <button class="btn secondary" id="btnHideSk">Hide secret</button>
+      </div>
+    </div>
+
+    <!-- STORAGE -->
+    <div class="card" id="storeCard" hidden>
+      <h2>2 · Choose how to store it</h2>
+      <div class="method-grid" id="storeMethods"></div>
+
+      <div id="store-session" class="store-panel">
+        <div class="teach">
+          <div class="icon">⏱</div>
+          <div>
+            <strong>Session only</strong>
+            <p>Nothing written to disk. Closing the tab forgets the key. Best on a shared PC after you already exported a backup.</p>
+          </div>
+        </div>
+        <p class="muted">No action needed — key stays in page memory until reload.</p>
+      </div>
+
+      <div id="store-vault" class="store-panel" hidden>
+        <div class="teach">
+          <div class="icon">🔒</div>
+          <div>
+            <strong>Encrypted vault (recommended)</strong>
+            <p>
+              AES-256-GCM. Unlock passphrase is <em>independent</em> of a passphrase-derived voting key.
+              Only ciphertext is stored in <code class="mono">localStorage</code>.
+            </p>
+          </div>
+        </div>
+        <label for="unlock">Vault unlock passphrase</label>
+        <input id="unlock" type="password" autocomplete="new-password" />
+        <label for="unlock2">Confirm unlock passphrase</label>
+        <input id="unlock2" type="password" autocomplete="new-password" />
+        <div class="row">
+          <button class="btn success" id="btnSeal">Seal &amp; save vault in browser</button>
+          <button class="btn secondary" id="btnDlVault">Download sealed vault JSON</button>
+        </div>
+      </div>
+
+      <div id="store-plaintext" class="store-panel" hidden>
+        <div class="teach">
+          <div class="icon">⚠</div>
+          <div>
+            <strong>Browser plaintext</strong>
+            <p>Convenient on a personal laptop. Any browser extension or local malware can read it. Clear after the election.</p>
+          </div>
+        </div>
+        <button class="btn warn" id="btnPlain">Save plaintext to localStorage</button>
+      </div>
+
+      <div id="store-file" class="store-panel" hidden>
+        <div class="teach">
+          <div class="icon">📄</div>
+          <div>
+            <strong>File / paper</strong>
+            <p>Download a human-readable paper wallet or a raw JSON identity (contains the secret — treat like cash).</p>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn secondary" id="btnPaper">Download paper wallet (.txt)</button>
+          <button class="btn secondary" id="btnJson">Download identity JSON</button>
+        </div>
+      </div>
+
+      <hr class="hr" />
+      <div class="row">
+        <a class="btn" href="/register.html">Next: register public key →</a>
+        <a class="btn secondary" href="/offline.html">Offline sign ballot</a>
+        <button class="btn danger" id="btnWipe">Wipe all local secrets</button>
+      </div>
+    </div>
+
+    <!-- UNLOCK EXISTING -->
+    <div class="card">
+      <h2>Unlock an existing vault</h2>
+      <p class="muted">If you sealed a key earlier on this browser, unlock it here to reuse for voting.</p>
+      <label for="unlockExist">Unlock passphrase</label>
+      <input id="unlockExist" type="password" autocomplete="current-password" />
+      <div class="row">
+        <button class="btn" id="btnUnlock">Unlock browser vault</button>
+        <label class="btn secondary" style="cursor:pointer;margin:0">
+          Open vault file…
+          <input type="file" id="vaultFile" accept="application/json,.json" hidden />
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    const msg = document.getElementById('msg');
+    function flash(text, kind = 'info') {
+      msg.innerHTML = `<div class="alert ${kind}">${text}</div>`;
+    }
+
+    let cryptoApi;
+    try {
+      cryptoApi = await import('/js/crypto-client.js');
+      await import('/js/nav.js').then((n) => n.enableOfflineCache());
+    } catch (e) {
+      console.error(e);
+      flash(
+        'Crypto failed to load in this browser: ' +
+          (e.message || e) +
+          '. Hard-refresh (Ctrl+Shift+R). If it persists, open DevTools → Console and share the red error.',
+        'err'
+      );
+      throw e;
+    }
+
+    const {
+      generateKeypair,
+      deriveKeypairFromPassphrase,
+      importSecretKey,
+      fingerprintPublicKey,
+      encryptVault,
+      decryptVault,
+      saveVaultToBrowser,
+      loadVaultFromBrowser,
+      saveIdentity,
+      clearAllLocalSecrets,
+      buildPaperWallet,
+      downloadText,
+      downloadJson,
+      KEY_METHODS,
+      STORAGE_METHODS,
+    } = cryptoApi;
+
+    let identity = null;
+    let keyMethod = 'random';
+    let storeMethod = 'session';
+
+    import('/js/nav.js').then((n) =>
+      n.enableOfflineCache().then((ok) => {
+        const p = document.getElementById('swPill');
+        p.textContent = ok
+          ? 'Offline cache armed — Keys & Offline Signer available offline after this visit'
+          : 'Service worker unavailable';
+        p.className = ok ? 'pill ok' : 'pill warn';
+      })
+    );
+
+    flash('Crypto ready — pick a method and generate a keypair.', 'ok');
+
+    // Method cards
+    const km = document.getElementById('keyMethods');
+    KEY_METHODS.forEach((m) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'method-card' + (m.id === 'random' ? ' selected' : '');
+      b.dataset.id = m.id;
+      b.innerHTML = `<h3>${m.title}</h3><p>${m.detail}</p><span class="tag">${m.id}</span>`;
+      b.onclick = () => {
+        keyMethod = m.id;
+        km.querySelectorAll('.method-card').forEach((el) => el.classList.remove('selected'));
+        b.classList.add('selected');
+        document.querySelectorAll('.key-panel').forEach((p) => (p.hidden = true));
+        document.getElementById('panel-' + m.id).hidden = false;
+      };
+      km.appendChild(b);
+    });
+
+    const sm = document.getElementById('storeMethods');
+    STORAGE_METHODS.forEach((m) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'method-card' + (m.id === 'session' ? ' selected' : '');
+      b.dataset.id = m.id;
+      b.innerHTML = `<h3>${m.title}</h3><p>${m.detail}</p><span class="tag">${m.risk}</span>`;
+      b.onclick = () => {
+        storeMethod = m.id;
+        sm.querySelectorAll('.method-card').forEach((el) => el.classList.remove('selected'));
+        b.classList.add('selected');
+        document.querySelectorAll('.store-panel').forEach((p) => (p.hidden = true));
+        document.getElementById('store-' + m.id).hidden = false;
+      };
+      sm.appendChild(b);
+    });
+
+    function showIdentity(id) {
+      identity = id;
+      document.getElementById('activeCard').hidden = false;
+      document.getElementById('storeCard').hidden = false;
+      document.getElementById('secretBox').textContent = id.secretKey;
+      document.getElementById('secretBox').hidden = false;
+      document.getElementById('kpi').innerHTML = `
+        <div class="cell"><div class="lbl">Method</div><div class="val">${id.method || '—'}</div></div>
+        <div class="cell"><div class="lbl">Fingerprint</div><div class="val mono">${fingerprintPublicKey(id.publicKey)}</div></div>
+        <div class="cell"><div class="lbl">Public key</div><div class="val mono">${id.publicKey.slice(0, 18)}…</div></div>
+        ${id.salt ? `<div class="cell"><div class="lbl">KDF salt</div><div class="val mono">${id.salt.slice(0, 16)}…</div></div>` : ''}
+      `;
+    }
+
+    document.getElementById('btnRandom').onclick = () => {
+      try {
+        showIdentity(generateKeypair());
+        flash('Random keypair created in this browser. Back it up before registering.', 'ok');
+        document.getElementById('activeCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (e) {
+        flash(e.message || String(e), 'err');
+      }
+    };
+
+    document.getElementById('btnDerive').onclick = async () => {
+      try {
+        const p1 = document.getElementById('phrase').value;
+        const p2 = document.getElementById('phrase2').value;
+        if (p1 !== p2) throw new Error('Passphrases do not match');
+        const salt = document.getElementById('saltIn').value.trim() || null;
+        const id = await deriveKeypairFromPassphrase(p1, salt);
+        showIdentity(id);
+        flash('Key derived. Save the salt with your backup if you want to re-derive later.', 'ok');
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnImport').onclick = () => {
+      try {
+        showIdentity(importSecretKey(document.getElementById('importSk').value));
+        flash('Secret imported. Public key recomputed locally.', 'ok');
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnCopySk').onclick = async () => {
+      if (!identity) return;
+      await navigator.clipboard.writeText(identity.secretKey);
+      flash('Secret copied — paste into a password manager, then clear clipboard.', 'warn');
+    };
+    document.getElementById('btnHideSk').onclick = () => {
+      document.getElementById('secretBox').hidden = true;
+    };
+
+    document.getElementById('btnSeal').onclick = async () => {
+      try {
+        if (!identity) throw new Error('Create a key first');
+        const u1 = document.getElementById('unlock').value;
+        const u2 = document.getElementById('unlock2').value;
+        if (u1 !== u2) throw new Error('Unlock passphrases do not match');
+        const vault = await encryptVault(identity, u1);
+        saveVaultToBrowser(vault);
+        flash('Vault sealed in localStorage. Secret is not stored in plaintext.', 'ok');
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnDlVault').onclick = async () => {
+      try {
+        if (!identity) throw new Error('Create a key first');
+        const u1 = document.getElementById('unlock').value;
+        const u2 = document.getElementById('unlock2').value;
+        if (u1 !== u2) throw new Error('Unlock passphrases do not match');
+        const vault = await encryptVault(identity, u1);
+        downloadJson(`vote-vault-${Date.now()}.json`, vault);
+        flash('Sealed vault file downloaded. Store offline.', 'ok');
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnPlain').onclick = () => {
+      if (!identity) return flash('Create a key first', 'err');
+      saveIdentity(identity);
+      flash('Plaintext identity saved to localStorage. Clear after election.', 'warn');
+    };
+
+    document.getElementById('btnPaper').onclick = () => {
+      if (!identity) return flash('Create a key first', 'err');
+      downloadText(`vote-paper-wallet.txt`, buildPaperWallet(identity));
+      flash('Paper wallet downloaded.', 'ok');
+    };
+
+    document.getElementById('btnJson').onclick = () => {
+      if (!identity) return flash('Create a key first', 'err');
+      downloadJson(`vote-identity-SECRET.json`, identity);
+      flash('JSON contains the SECRET — keep offline.', 'warn');
+    };
+
+    document.getElementById('btnWipe').onclick = () => {
+      clearAllLocalSecrets();
+      identity = null;
+      document.getElementById('activeCard').hidden = true;
+      flash('All local secrets wiped from this browser.', 'ok');
+    };
+
+    async function unlockVault(vault, pass) {
+      const id = await decryptVault(vault, pass);
+      showIdentity(id);
+      flash('Vault unlocked into this session.', 'ok');
+    }
+
+    document.getElementById('btnUnlock').onclick = async () => {
+      try {
+        const vault = loadVaultFromBrowser();
+        if (!vault) throw new Error('No vault in this browser');
+        await unlockVault(vault, document.getElementById('unlockExist').value);
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('vaultFile').onchange = async (ev) => {
+      try {
+        const file = ev.target.files?.[0];
+        if (!file) return;
+        const vault = JSON.parse(await file.text());
+        const pass = document.getElementById('unlockExist').value;
+        if (!pass) throw new Error('Enter unlock passphrase first');
+        await unlockVault(vault, pass);
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+  </script>
+</body>
+</html>
