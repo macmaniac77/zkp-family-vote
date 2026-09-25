@@ -1,0 +1,23 @@
+{
+  "name": "zkp-family-vote",
+  "version": "1.0.0",
+  "description": "Family-scale single-server private voting with linkable ring signatures and a file-backed vote chain",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "reset": "node server/reset.js",
+    "demo": "node server/demo.js",
+    "test:offline": "node server/test-offline.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.8.1",
+    "@noble/hashes": "^1.7.1",
+    "express": "^4.21.2",
+    "nanoid": "^5.1.0"
+  }
+}
