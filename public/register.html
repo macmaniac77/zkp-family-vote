@@ -210,10 +210,10 @@
 
       function escapeHtml(s) {
         return String(s)
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;')
-          .replace(/"/g, '&quot;');
+          .replace(/&/g, '&')
+          .replace(/</g, '<')
+          .replace(/>/g, '>')
+          .replace(/"/g, '"');
       }
 
       async function lookupInvite() {
@@ -448,12 +448,10 @@
           '”. Chain block #' +
           data.chainBlock +
           '. Secret was not uploaded.';
-        if (id && buildPaperWallet) {
-          document.getElementById('backupHint').textContent = buildPaperWallet(id);
-        } else {
-          document.getElementById('backupHint').textContent =
-            'You registered a pasted public key — keep the matching secret offline.';
-        }
+        document.getElementById('backupHint').textContent =
+          id && buildPaperWallet
+            ? buildPaperWallet(id)
+            : 'You registered a pasted public key — keep the matching secret offline.';
         document.getElementById('btnRegister').disabled = true;
         flash('Registration complete.', 'ok');
       } catch (e) {
