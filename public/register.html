@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Register — Family Vote</title>
+  <link rel="stylesheet" href="/css/app.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "@noble/curves/secp256k1.js": "/vendor/@noble/curves/esm/secp256k1.js",
+      "@noble/curves/": "/vendor/@noble/curves/esm/",
+      "@noble/hashes/sha2.js": "/vendor/@noble/hashes/esm/sha2.js",
+      "@noble/hashes/sha256.js": "/vendor/@noble/hashes/esm/sha256.js",
+      "@noble/hashes/hmac.js": "/vendor/@noble/hashes/esm/hmac.js",
+      "@noble/hashes/utils.js": "/vendor/@noble/hashes/esm/utils.js",
+      "@noble/hashes/utils": "/vendor/@noble/hashes/esm/utils.js",
+      "@noble/hashes/crypto.js": "/vendor/@noble/hashes/esm/crypto.js",
+      "@noble/hashes/crypto": "/vendor/@noble/hashes/esm/crypto.js",
+      "@noble/hashes/": "/vendor/@noble/hashes/esm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div class="wrap">
+    <nav class="top">
+      <a class="brand" href="/">Family ZKP Vote</a>
+      <div class="links">
+        <a href="/admin.html">Admin</a>
+        <a href="/keys.html">Keys</a>
+        <a href="/register.html">Register</a>
+        <a href="/offline.html">Offline sign</a>
+        <a href="/vote.html">Vote</a>
+        <a href="/results.html">Results</a>
+      </div>
+    </nav>
+
+    <div class="card">
+      <div class="alert ok">
+        <strong>Prefer the guided path:</strong>
+        <a href="/voter.html">Voter wizard</a> walks you through invite → key → save → register → vote.
+        This page is a legacy/advanced shortcut.
+      </div>
+      <h1>Register your public key</h1>
+      <p class="muted">
+        You cannot invent an invite. An <strong style="color:var(--text)">organizer</strong> must create one and give you the link.
+      </p>
+      <div class="flow">
+        <span class="step">Admin creates invite</span><span class="arrow">→</span>
+        <span class="step">You open/paste link</span><span class="arrow">→</span>
+        <span class="step">Look up (verify)</span><span class="arrow">→</span>
+        <span class="step">Register public key</span>
+      </div>
+      <div class="row" id="statusRow">
+        <span class="pill" id="electionPill">Loading…</span>
+      </div>
+      <div id="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>How invites work</h2>
+      <div class="teach">
+        <div class="icon">1</div>
+        <div>
+          <strong>Admin side</strong>
+          <p>
+            On <a href="/admin.html">Admin</a>: unlock with the admin passphrase → election must be in
+            <strong style="color:var(--text)">registration</strong> status → type a name (e.g. “Alex”) →
+            <strong style="color:var(--text)">Generate invite</strong> → <strong style="color:var(--text)">Copy link</strong>.
+            That link is shown <em>once</em> (the server only keeps a hash).
+          </p>
+        </div>
+      </div>
+      <div class="teach">
+        <div class="icon">2</div>
+        <div>
+          <strong>Your side</strong>
+          <p>
+            Paste the full link (or just the long hex token) below and click <strong style="color:var(--text)">Look up invite</strong>.
+            Or open the link directly — it fills the field for you. Then attach a public key and register.
+          </p>
+        </div>
+      </div>
+      <div class="alert info" id="noInviteHint" hidden>
+        Right now this server has <strong>0 unused invites</strong>. Looking up will fail until Admin generates one.
+        Open <a href="/admin.html">Admin → Invite family members</a> first.
+      </div>
+    </div>
+
+    <div class="card" id="formCard">
+      <h2>1 · Your invite</h2>
+      <label for="invite">Paste the invite link or token from your admin</label>
+      <input
+        id="invite"
+        class="mono"
+        placeholder="http://localhost:3847/register.html?invite=abc123…   or just the hex token"
+        autocomplete="off"
+      />
+      <div class="row">
+        <button class="btn" id="btnCheck" type="button">Look up invite</button>
+        <button class="btn secondary" id="btnClearInvite" type="button">Clear</button>
+      </div>
+      <div id="inviteInfo" style="margin-top:0.75rem"></div>
+
+      <hr class="hr" />
+
+      <h2>2 · Public key (only after invite is OK)</h2>
+      <div id="keySection" class="muted">Look up a valid invite first — then you can attach a key.</div>
+      <div id="keyPanel" hidden>
+        <div class="tabs" id="pkTabs">
+          <button type="button" class="active" data-tab="session">Saved key</button>
+          <button type="button" data-tab="generate">Generate new</button>
+          <button type="button" data-tab="paste">Paste public key</button>
+        </div>
+
+        <div id="tab-session">
+          <p class="muted" id="sessionHint">No key in session.</p>
+          <div class="kpi" id="sessionKpi" hidden></div>
+          <p class="muted"><a href="/keys.html">Open Keys workshop</a> to create/store a key, then come back.</p>
+        </div>
+        <div id="tab-generate" hidden>
+          <div class="teach">
+            <div class="icon">🎲</div>
+            <div>
+              <strong>Quick random key</strong>
+              <p>Creates a key here. Back it up after registering. Full vault/paper options are on the Keys page.</p>
+            </div>
+          </div>
+          <button class="btn secondary" id="btnGen" type="button">Generate random keypair</button>
+          <p id="cryptoStatus" class="muted" style="margin-top:0.5rem"></p>
+        </div>
+        <div id="tab-paste" hidden>
+          <label for="pkPaste">Public key (compressed hex, starts with 02 or 03)</label>
+          <textarea id="pkPaste" class="mono" rows="2" placeholder="02… or 03…"></textarea>
+        </div>
+
+        <button class="btn success block" id="btnRegister" type="button" style="margin-top:1rem" disabled>
+          Register public key on chain
+        </button>
+      </div>
+    </div>
+
+    <div class="card" id="doneCard" hidden>
+      <h2>Registered</h2>
+      <div class="alert ok" id="doneMsg"></div>
+      <div class="teach">
+        <div class="icon">💾</div>
+        <div>
+          <strong>Keep your secret key</strong>
+          <p>You need it later to vote. The chain only has your public key.</p>
+        </div>
+      </div>
+      <pre class="secret-box" id="backupHint"></pre>
+      <div class="row" style="margin-top:0.75rem">
+        <a class="btn" href="/keys.html">Keys / backup</a>
+        <a class="btn secondary" href="/vote.html">Vote page</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Invite lookup works even if crypto fails to load -->
+  <script>
+    (function () {
+      const msg = document.getElementById('msg');
+      const inviteInput = document.getElementById('invite');
+      const inviteInfo = document.getElementById('inviteInfo');
+      let validToken = null;
+
+      function flash(text, kind) {
+        msg.innerHTML = '<div class="alert ' + (kind || 'info') + '">' + text + '</div>';
+      }
+
+      function parseInvite(raw) {
+        const s = (raw || '').trim();
+        if (!s) return '';
+        try {
+          if (s.includes('invite=')) {
+            const u = new URL(s, location.origin);
+            return (u.searchParams.get('invite') || '').trim();
+          }
+        } catch (_) { /* fall through */ }
+        if (s.includes('invite=')) {
+          return decodeURIComponent(s.split('invite=')[1].split('&')[0].trim());
+        }
+        // bare token
+        return s.replace(/\s+/g, '');
+      }
+
+      function setInviteOk(data, token) {
+        validToken = token;
+        window.__validInviteToken = token;
+        inviteInfo.innerHTML =
+          '<div class="alert ok">' +
+          '<strong>Invite valid</strong><br/>' +
+          'For: <strong>' + escapeHtml(data.label) + '</strong><br/>' +
+          'Election: ' + escapeHtml(data.electionTitle || '—') + '<br/>' +
+          'Status: ' + escapeHtml(data.status) +
+          (data.used ? ' · already used' : ' · ready to use') +
+          '</div>';
+        document.getElementById('keySection').hidden = true;
+        document.getElementById('keyPanel').hidden = false;
+        const canReg = !data.used && data.status === 'registration';
+        document.getElementById('btnRegister').disabled = !canReg;
+        if (data.used) flash('This invite was already used. Ask admin for a new one.', 'warn');
+        else if (data.status !== 'registration')
+          flash('Registration is closed (status: ' + data.status + ').', 'warn');
+        else flash('Invite OK. Now attach a public key (step 2) and register.', 'ok');
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      async function lookupInvite() {
+        const token = parseInvite(inviteInput.value);
+        if (!token) {
+          flash('Paste an invite link or token first. Get one from Admin → Generate invite.', 'warn');
+          inviteInfo.innerHTML = '';
+          validToken = null;
+          window.__validInviteToken = null;
+          document.getElementById('btnRegister').disabled = true;
+          return;
+        }
+
+        flash('Looking up invite…', 'info');
+        try {
+          const res = await fetch('/api/invite/' + encodeURIComponent(token));
+          const data = await res.json().catch(function () { return {}; });
+          if (!res.ok) {
+            validToken = null;
+            window.__validInviteToken = null;
+            document.getElementById('btnRegister').disabled = true;
+            document.getElementById('keyPanel').hidden = true;
+            document.getElementById('keySection').hidden = false;
+            inviteInfo.innerHTML =
+              '<div class="alert err">' +
+              escapeHtml(data.error || 'Invite not found') +
+              (data.hint ? '<br/><span class="muted">' + escapeHtml(data.hint) + '</span>' : '') +
+              '</div>';
+            flash(data.error || 'Invite not found', 'err');
+            return;
+          }
+          // put normalized token back in the box for clarity
+          inviteInput.value = token;
+          setInviteOk(data, token);
+        } catch (e) {
+          flash('Network error: ' + (e.message || e), 'err');
+        }
+      }
+
+      document.getElementById('btnCheck').onclick = lookupInvite;
+      document.getElementById('btnClearInvite').onclick = function () {
+        inviteInput.value = '';
+        inviteInfo.innerHTML = '';
+        validToken = null;
+        window.__validInviteToken = null;
+        document.getElementById('keyPanel').hidden = true;
+        document.getElementById('keySection').hidden = false;
+        document.getElementById('btnRegister').disabled = true;
+        flash('Cleared.', 'info');
+      };
+
+      // Prefill from URL ?invite=
+      const pre = new URLSearchParams(location.search).get('invite') || '';
+      if (pre) {
+        inviteInput.value = pre;
+        lookupInvite();
+      }
+
+      // Election status banner
+      fetch('/api/status')
+        .then(function (r) { return r.json(); })
+        .then(function (s) {
+          const pill = document.getElementById('electionPill');
+          const hint = document.getElementById('noInviteHint');
+          if (!s.bootstrapped) {
+            pill.textContent = 'Server not set up — Admin must bootstrap first';
+            pill.className = 'pill warn';
+            return;
+          }
+          if (!s.election) {
+            pill.textContent = 'No election — Admin must create one';
+            pill.className = 'pill warn';
+            return;
+          }
+          pill.textContent =
+            s.election.title +
+            ' · ' +
+            s.election.status +
+            ' · invites created: ' +
+            (s.election.inviteCount || 0) +
+            ' · registered: ' +
+            (s.election.voterCount || 0);
+          pill.className =
+            s.election.status === 'registration' ? 'pill ok' : 'pill warn';
+          if (
+            s.election.status === 'registration' &&
+            (s.election.inviteCount || 0) === 0
+          ) {
+            hint.hidden = false;
+          }
+        })
+        .catch(function () {
+          document.getElementById('electionPill').textContent = 'Cannot reach server';
+          document.getElementById('electionPill').className = 'pill bad';
+        });
+
+      window.__lookupInvite = lookupInvite;
+      window.__getValidInviteToken = function () {
+        return validToken || window.__validInviteToken;
+      };
+    })();
+  </script>
+
+  <!-- Crypto only needed for key generation / register -->
+  <script type="module">
+    const cryptoStatus = document.getElementById('cryptoStatus');
+    let generateKeypair, saveIdentity, loadIdentity, loadVaultFromBrowser;
+    let fingerprintPublicKey, buildPaperWallet;
+    let identity = null;
+    let mode = 'session';
+    let cryptoReady = false;
+
+    function flash(text, kind) {
+      document.getElementById('msg').innerHTML =
+        '<div class="alert ' + (kind || 'info') + '">' + text + '</div>';
+    }
+
+    try {
+      const c = await import('/js/crypto-client.js');
+      generateKeypair = c.generateKeypair;
+      saveIdentity = c.saveIdentity;
+      loadIdentity = c.loadIdentity;
+      loadVaultFromBrowser = c.loadVaultFromBrowser;
+      fingerprintPublicKey = c.fingerprintPublicKey;
+      buildPaperWallet = c.buildPaperWallet;
+      identity = loadIdentity();
+      cryptoReady = true;
+      cryptoStatus.textContent = 'Crypto ready.';
+    } catch (e) {
+      console.error(e);
+      cryptoStatus.textContent =
+        'Crypto failed to load — you can still paste a public key, or hard-refresh (Ctrl+Shift+R).';
+      flash(
+        'Crypto module failed to load. Invite lookup still works. For Generate key, hard-refresh or paste a public key from Keys page.',
+        'warn'
+      );
+    }
+
+    function refreshSessionUi() {
+      const hint = document.getElementById('sessionHint');
+      const kpi = document.getElementById('sessionKpi');
+      if (identity?.publicKey && fingerprintPublicKey) {
+        hint.textContent = 'Using a key saved in this browser.';
+        kpi.hidden = false;
+        kpi.innerHTML =
+          '<div class="cell"><div class="lbl">Fingerprint</div><div class="val mono">' +
+          fingerprintPublicKey(identity.publicKey) +
+          '</div></div>';
+      } else if (loadVaultFromBrowser && loadVaultFromBrowser()) {
+        hint.innerHTML =
+          'Encrypted vault found — <a href="/keys.html">unlock on Keys</a>, then return.';
+        kpi.hidden = true;
+      } else {
+        hint.textContent = 'No key in session — generate below or open Keys.';
+        kpi.hidden = true;
+      }
+    }
+    refreshSessionUi();
+
+    document.getElementById('pkTabs').onclick = (e) => {
+      const btn = e.target.closest('button[data-tab]');
+      if (!btn) return;
+      mode = btn.dataset.tab;
+      document.querySelectorAll('#pkTabs button').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      ['session', 'generate', 'paste'].forEach((t) => {
+        document.getElementById('tab-' + t).hidden = t !== mode;
+      });
+    };
+
+    document.getElementById('btnGen').onclick = () => {
+      if (!cryptoReady) {
+        flash('Crypto not loaded. Use Keys page or paste a public key.', 'err');
+        return;
+      }
+      try {
+        identity = generateKeypair();
+        saveIdentity(identity);
+        refreshSessionUi();
+        mode = 'session';
+        document.querySelectorAll('#pkTabs button').forEach((b) => {
+          b.classList.toggle('active', b.dataset.tab === 'session');
+        });
+        document.getElementById('tab-session').hidden = false;
+        document.getElementById('tab-generate').hidden = true;
+        document.getElementById('tab-paste').hidden = true;
+        flash('Key created. Register when ready — then back it up.', 'ok');
+      } catch (e) {
+        flash(e.message || String(e), 'err');
+      }
+    };
+
+    function resolvePublicKey() {
+      if (mode === 'paste') {
+        const pk = document.getElementById('pkPaste').value.trim();
+        if (!pk) throw new Error('Paste a public key');
+        if (!/^(02|03)[0-9a-fA-F]{64}$/.test(pk)) {
+          throw new Error('Public key should be 66 hex chars starting with 02 or 03');
+        }
+        return { publicKey: pk, identity: null };
+      }
+      if (!identity?.publicKey) {
+        throw new Error('No key yet — Generate new, or open Keys, or paste public key');
+      }
+      return { publicKey: identity.publicKey, identity };
+    }
+
+    document.getElementById('btnRegister').onclick = async () => {
+      try {
+        const token = window.__getValidInviteToken && window.__getValidInviteToken();
+        if (!token) throw new Error('Look up a valid invite first (step 1)');
+        const { publicKey, identity: id } = resolvePublicKey();
+        const res = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, publicKey }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Register failed');
+
+        if (id && saveIdentity) {
+          id.label = data.label;
+          id.electionId = data.electionId;
+          id.registeredAt = new Date().toISOString();
+          saveIdentity(id);
+        }
+
+        document.getElementById('doneCard').hidden = false;
+        document.getElementById('doneMsg').textContent =
+          'Public key enrolled as “' +
+          (data.label || '') +
+          '”. Chain block #' +
+          data.chainBlock +
+          '. Secret was not uploaded.';
+        if (id && buildPaperWallet) {
+          document.getElementById('backupHint').textContent = buildPaperWallet(id);
+        } else {
+          document.getElementById('backupHint').textContent =
+            'You registered a pasted public key — keep the matching secret offline.';
+        }
+        document.getElementById('btnRegister').disabled = true;
+        flash('Registration complete.', 'ok');
+      } catch (e) {
+        flash(e.message || String(e), 'err');
+      }
+    };
+  </script>
+</body>
+</html>
