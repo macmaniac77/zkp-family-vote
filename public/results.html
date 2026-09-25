@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Results & Chain — Family Vote</title>
+  <title>Results &amp; Chain — Family Vote</title>
   <link rel="stylesheet" href="/css/app.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
     <div id="nav"></div>
 
     <div class="card">
-      <h1>Results & chain explorer <button type="button" class="help-q" data-help="chain">?</button></h1>
+      <h1>Results &amp; chain explorer <button type="button" class="help-q" data-help="chain">?</button></h1>
       <p class="muted">
         Tally is a public count of anonymous ballots. Each vote carries a proof and key image — not a person’s name.
         <button type="button" class="help-q" data-help="vote">?</button>
@@ -62,9 +62,9 @@
 
     function escapeHtml(s) {
       return String(s)
-        .replace(/&/g, '&')
-        .replace(/</g, '<')
-        .replace(/>/g, '>');
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
     }
 
     async function load() {
