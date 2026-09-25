@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Organizer wizard — Family Vote</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div id="nav"></div>
+    <div id="role"></div>
+    <div id="progress"></div>
+    <div id="msg"></div>
+
+    <!-- Unlock always visible -->
+    <div class="card" id="sessionCard">
+      <h2 class="step-h">Organizer access <button type="button" class="help-q" data-help="admin_pass">?</button></h2>
+      <p class="muted">You’re the household organizer — not a normal voter. This passphrase is different from voter secret keys.</p>
+      <div id="bootstrapCard">
+        <label for="bootToken">First time? Choose a long admin passphrase (save it!)</label>
+        <input id="bootToken" type="password" autocomplete="new-password" placeholder="at least 8 characters" />
+        <button class="btn" id="btnBoot" type="button">Initialize organizer</button>
+        <hr class="hr" />
+      </div>
+      <label for="adminToken">Admin passphrase</label>
+      <input id="adminToken" type="password" autocomplete="current-password" placeholder="Your admin passphrase" />
+      <div class="row">
+        <button class="btn secondary" id="btnSaveToken" type="button">Remember in this browser</button>
+        <button class="btn" id="btnRefresh" type="button">Unlock / refresh →</button>
+      </div>
+    </div>
+
+    <div class="card" id="dashCard" hidden>
+      <h2>Where you are</h2>
+      <div id="dashSummary" class="muted"></div>
+      <div class="row" style="margin-top:0.75rem" id="dashPills"></div>
+    </div>
+
+    <div class="card" id="electionCard" hidden>
+      <h2 class="step-h">Create the election <button type="button" class="help-q" data-help="journey">?</button></h2>
+      <p class="muted">Title + choices people will vote on. You can only have one active election at a time.</p>
+      <label for="title">Election title</label>
+      <input id="title" placeholder="Family Movie Night" />
+      <label for="candidates">Choices (one per line, at least two)</label>
+      <textarea id="candidates" rows="4" placeholder="Dune&#10;Spirited Away&#10;The Princess Bride"></textarea>
+      <button class="btn success" id="btnCreate" type="button">Create election →</button>
+    </div>
+
+    <div class="card" id="inviteCard" hidden>
+      <h2 class="step-h">Invite each voter <button type="button" class="help-q" data-help="invite">?</button></h2>
+      <div class="teach">
+        <div class="icon">✉</div>
+        <div>
+          <strong>What happens next for them</strong>
+          <p>
+            They open the link → voter wizard → create secret key → <em>save it</em> → register public key.
+            You only keep a checklist of labels here; their secret never comes to you.
+          </p>
+        </div>
+      </div>
+      <label for="inviteLabel">Label (only you see this — e.g. Mom, Alex)</label>
+      <input id="inviteLabel" placeholder="Alex" />
+      <button class="btn success" id="btnInvite" type="button">Generate invite link</button>
+      <div id="inviteOut"></div>
+      <h2 style="margin-top:1.25rem">Roster checklist</h2>
+      <div id="roster"></div>
+      <div class="alert info" style="margin-top:1rem">
+        When everyone who should vote shows “registered”, go to the next step and open voting.
+      </div>
+    </div>
+
+    <div class="card" id="controlCard" hidden>
+      <h2 class="step-h">Open or close voting <button type="button" class="help-q" data-help="open_close">?</button></h2>
+      <p class="muted">
+        <strong style="color:var(--text)">Open</strong> freezes the public-key list (no more registrations).
+        <strong style="color:var(--text)">Close</strong> stops ballots and writes the tally on the chain.
+      </p>
+      <div class="row">
+        <button class="btn success" id="btnOpen" type="button">Open voting</button>
+        <button class="btn danger" id="btnClose" type="button">Close &amp; finalize tally</button>
+      </div>
+      <div id="controlOut"></div>
+      <div class="next-bar">
+        <a class="btn secondary" href="/results.html">View results &amp; chain</a>
+        <a class="btn secondary" href="/voter.html">Open voter wizard (for yourself)</a>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import {
+      wizardNav,
+      renderProgress,
+      roleBanner,
+      flashEl,
+      initWizardPage,
+    } from '/js/wizard-ui.js';
+
+    const STEPS = ['Access', 'Election', 'Invites', 'Open / close', 'Results'];
+
+    document.getElementById('nav').innerHTML = wizardNav('admin');
+    const msg = document.getElementById('msg');
+    const flash = (t, k) => flashEl(msg, t, k);
+    const tokenInput = document.getElementById('adminToken');
+    tokenInput.value = localStorage.getItem('zkp_admin_token') || '';
+
+    function token() {
+      return tokenInput.value.trim();
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function api(method, path, body) {
+      const res = await fetch(path, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': token(),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    function setChrome(stepIndex, who, doing, next) {
+      document.getElementById('role').innerHTML = roleBanner({
+        who,
+        doing,
+        next,
+        helpId: 'roles',
+      });
+      document.getElementById('progress').innerHTML = renderProgress({
+        steps: STEPS,
+        current: stepIndex,
+        title: 'Organizer wizard',
+      });
+      initWizardPage();
+    }
+
+    document.getElementById('btnSaveToken').onclick = () => {
+      localStorage.setItem('zkp_admin_token', token());
+      flash('Passphrase remembered in this browser only.', 'ok');
+    };
+
+    document.getElementById('btnBoot').onclick = async () => {
+      try {
+        const adminToken = document.getElementById('bootToken').value;
+        await api('POST', '/api/admin/bootstrap', { adminToken });
+        tokenInput.value = adminToken;
+        localStorage.setItem('zkp_admin_token', adminToken);
+        flash('Organizer initialized. Save that passphrase somewhere safe.', 'ok');
+        await refresh();
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnCreate').onclick = async () => {
+      try {
+        const title = document.getElementById('title').value;
+        const candidates = document
+          .getElementById('candidates')
+          .value.split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const r = await api('POST', '/api/admin/election', { title, candidates });
+        flash(`Election “${r.election.title}” created. Next: generate invites.`, 'ok');
+        await refresh();
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnInvite').onclick = async () => {
+      try {
+        const label = document.getElementById('inviteLabel').value;
+        const r = await api('POST', '/api/admin/invite', { label });
+        const url = location.origin + r.invite.urlPath;
+        document.getElementById('inviteOut').innerHTML = `
+          <div class="alert ok">
+            <strong>Invite for ${escapeHtml(r.invite.label)} — copy now</strong>
+            <p style="margin:0.5rem 0 0">Send them this link. They should open the <em>voter wizard</em>:</p>
+            <p class="mono" style="word-break:break-all;margin:0.5rem 0">${escapeHtml(url)}</p>
+            <div class="row">
+              <button class="btn" type="button" id="copyInvite">Copy link</button>
+              <a class="btn secondary" href="${escapeHtml(url)}" target="_blank" rel="noopener">Test as voter</a>
+            </div>
+            <p class="muted" style="margin:0.75rem 0 0">${escapeHtml(r.warning)}</p>
+          </div>`;
+        document.getElementById('copyInvite').onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(url);
+            flash('Link copied — send it to that person.', 'ok');
+          } catch {
+            flash('Select the link and copy manually.', 'warn');
+          }
+        };
+        document.getElementById('inviteLabel').value = '';
+        await refresh();
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnOpen').onclick = async () => {
+      try {
+        const r = await api('POST', '/api/admin/open', {});
+        document.getElementById('controlOut').innerHTML = `
+          <div class="alert ok">Voting open. Ring size ${r.ringSize}. Tell voters to finish the wizard (step Vote).</div>`;
+        flash('Voting is open.', 'ok');
+        await refresh();
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnClose').onclick = async () => {
+      if (!confirm('Close voting and write final tally on the chain?')) return;
+      try {
+        const r = await api('POST', '/api/admin/close', {});
+        document.getElementById('controlOut').innerHTML = `
+          <div class="alert ok">Closed. Tally: ${escapeHtml(JSON.stringify(r.tally.counts))}</div>`;
+        flash('Election closed.', 'ok');
+        await refresh();
+      } catch (e) {
+        flash(e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnRefresh').onclick = () => refresh();
+
+    async function refresh() {
+      const status = await fetch('/api/status').then((r) => r.json());
+      document.getElementById('bootstrapCard').hidden = status.bootstrapped;
+
+      if (!status.bootstrapped) {
+        setChrome(
+          0,
+          'Organizer (first-time setup)',
+          'Creating the admin passphrase',
+          'Create an election'
+        );
+        document.getElementById('dashCard').hidden = true;
+        document.getElementById('electionCard').hidden = true;
+        document.getElementById('inviteCard').hidden = true;
+        document.getElementById('controlCard').hidden = true;
+        return;
+      }
+
+      if (!token()) {
+        setChrome(0, 'Organizer', 'Enter your admin passphrase', 'Unlock the dashboard');
+        flash('Enter your admin passphrase and click Unlock / refresh.', 'info');
+        return;
+      }
+
+      try {
+        const dash = await api('GET', '/api/admin/dashboard');
+        document.getElementById('dashCard').hidden = false;
+        const e = dash.election;
+
+        if (!e || e.status === 'closed') {
+          setChrome(
+            1,
+            'Organizer',
+            e?.status === 'closed' ? 'Previous election closed — create a new one' : 'Creating an election',
+            'Invite family members'
+          );
+          document.getElementById('electionCard').hidden = false;
+          document.getElementById('inviteCard').hidden = true;
+          document.getElementById('controlCard').hidden = true;
+          document.getElementById('dashSummary').textContent = e
+            ? `Last election “${e.title}” is closed. Create a new one when ready.`
+            : 'No election yet. Create one below.';
+        } else if (e.status === 'registration') {
+          setChrome(
+            2,
+            'Organizer',
+            `Inviting voters for “${e.title}”`,
+            'When roster is ready → open voting'
+          );
+          document.getElementById('electionCard').hidden = true;
+          document.getElementById('inviteCard').hidden = false;
+          document.getElementById('controlCard').hidden = false;
+          document.getElementById('btnOpen').disabled = false;
+          document.getElementById('btnClose').disabled = true;
+          document.getElementById('dashSummary').textContent =
+            `${e.title} — registration open — ${e.voterCount} registered / ${e.inviteCount} invites created. Votes cast: ${dash.votesCast}.`;
+        } else if (e.status === 'open') {
+          setChrome(
+            3,
+            'Organizer',
+            `Voting is open for “${e.title}”`,
+            'When everyone has voted → close'
+          );
+          document.getElementById('electionCard').hidden = true;
+          document.getElementById('inviteCard').hidden = true;
+          document.getElementById('controlCard').hidden = false;
+          document.getElementById('btnOpen').disabled = true;
+          document.getElementById('btnClose').disabled = false;
+          document.getElementById('dashSummary').textContent =
+            `${e.title} — VOTING OPEN — ${dash.votesCast} ballots so far (ring size ${e.ringSize}).`;
+        }
+
+        document.getElementById('dashPills').innerHTML = e
+          ? `<span class="pill info">${escapeHtml(e.status)}</span>
+             <span class="pill">Registered ${e.voterCount || 0}</span>
+             <span class="pill ok">Chain ${dash.chainAudit?.ok ? 'OK' : 'FAIL'}</span>`
+          : '';
+
+        if (e && e.status === 'registration') {
+          const rows = (dash.voters || [])
+            .map(
+              (v) =>
+                `<tr><td>${escapeHtml(v.label)}</td><td>${v.registered ? '✓ registered' : 'pending'}</td><td class="mono">${escapeHtml(v.publicKey || '—')}</td></tr>`
+            )
+            .join('');
+          const inv = (dash.invites || [])
+            .map(
+              (i) =>
+                `<tr><td>${escapeHtml(i.label)}</td><td>${i.used ? 'used' : 'waiting for them'}</td></tr>`
+            )
+            .join('');
+          document.getElementById('roster').innerHTML = `
+            <table><thead><tr><th>Label</th><th>Status</th><th>Public key</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="3">No one registered yet</td></tr>'}</tbody></table>
+            <p class="muted" style="margin-top:1rem">Invites issued</p>
+            <table><thead><tr><th>Label</th><th>Link status</th></tr></thead>
+            <tbody>${inv || '<tr><td colspan="2">None yet — generate above</td></tr>'}</tbody></table>`;
+        }
+      } catch (e) {
+        flash(e.message, 'err');
+        setChrome(0, 'Organizer', 'Passphrase not accepted', 'Fix passphrase and unlock again');
+        document.getElementById('dashCard').hidden = true;
+        document.getElementById('electionCard').hidden = true;
+        document.getElementById('inviteCard').hidden = true;
+        document.getElementById('controlCard').hidden = true;
+      }
+    }
+
+    // initial chrome
+    fetch('/api/status')
+      .then((r) => r.json())
+      .then((s) => {
+        document.getElementById('bootstrapCard').hidden = s.bootstrapped;
+        if (token() && s.bootstrapped) refresh();
+        else {
+          setChrome(
+            0,
+            'Organizer',
+            s.bootstrapped ? 'Unlock with your passphrase' : 'First-time setup',
+            'Create election & invites'
+          );
+          initWizardPage();
+        }
+      });
+  </script>
+</body>
+</html>
