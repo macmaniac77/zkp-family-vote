@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Results & Chain — Family Vote</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div id="nav"></div>
+
+    <div class="card">
+      <h1>Results & chain explorer <button type="button" class="help-q" data-help="chain">?</button></h1>
+      <p class="muted">
+        Tally is a public count of anonymous ballots. Each vote carries a proof and key image — not a person’s name.
+        <button type="button" class="help-q" data-help="vote">?</button>
+      </p>
+      <div class="row">
+        <span class="pill" id="auditPill">Audit…</span>
+        <button class="btn secondary" id="btnRefresh">Refresh</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 id="title">—</h2>
+      <p class="muted" id="sub">—</p>
+      <div id="bars"></div>
+      <p class="muted" id="total"></p>
+    </div>
+
+    <div class="card">
+      <h2>Anonymous ballots</h2>
+      <p class="muted">Choices and key images only — no voter labels.</p>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Time</th>
+              <th>Choice</th>
+              <th>Key image (nullifier)</th>
+              <th>Block hash</th>
+            </tr>
+          </thead>
+          <tbody id="ballots"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Full chain</h2>
+      <p class="muted">File: <code class="mono">data/blockchain.jsonl</code> — hash-linked, append-only.</p>
+      <div id="chain"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { wizardNav, initWizardPage } from '/js/wizard-ui.js';
+    document.getElementById('nav').innerHTML = wizardNav('results');
+    initWizardPage();
+
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, '&')
+        .replace(/</g, '<')
+        .replace(/>/g, '>');
+    }
+
+    async function load() {
+      const [tally, chain] = await Promise.all([
+        fetch('/api/tally').then((r) => r.json()),
+        fetch('/api/chain').then((r) => r.json()),
+      ]);
+
+      const audit = chain.audit;
+      const pill = document.getElementById('auditPill');
+      pill.textContent = audit.ok
+        ? `Chain audit OK · ${audit.blocks} blocks`
+        : `Chain audit FAILED · ${audit.issues.length} issues`;
+      pill.className = audit.ok ? 'pill ok' : 'pill bad';
+
+      if (!tally.election) {
+        document.getElementById('title').textContent = 'No election yet';
+        document.getElementById('sub').textContent = 'Create one in Admin.';
+        document.getElementById('bars').innerHTML = '';
+        document.getElementById('ballots').innerHTML = '';
+      } else {
+        document.getElementById('title').textContent = tally.election.title;
+        document.getElementById('sub').textContent =
+          `Status: ${tally.election.status} · id ${tally.election.id}`;
+        const counts = tally.tally?.counts || {};
+        const total = tally.tally?.total || 0;
+        document.getElementById('total').textContent = `Total ballots: ${total}`;
+        document.getElementById('bars').innerHTML = Object.entries(counts)
+          .map(([name, n]) => {
+            const pct = total ? Math.round((n / total) * 1000) / 10 : 0;
+            return `<div class="bar-row">
+              <div class="bar-label"><span>${escapeHtml(name)}</span><span>${n} · ${pct}%</span></div>
+              <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+            </div>`;
+          })
+          .join('');
+
+        document.getElementById('ballots').innerHTML = (tally.ballots || [])
+          .map(
+            (b) => `<tr>
+              <td>${b.index}</td>
+              <td>${escapeHtml(b.timestamp)}</td>
+              <td><strong>${escapeHtml(b.choice)}</strong></td>
+              <td class="mono">${escapeHtml(b.keyImage.slice(0, 18))}…</td>
+              <td class="mono">${escapeHtml(b.hash.slice(0, 14))}…</td>
+            </tr>`
+          )
+          .join('') || '<tr><td colspan="5">No ballots yet</td></tr>';
+      }
+
+      document.getElementById('chain').innerHTML = chain.blocks
+        .map((b) => {
+          const cls = b.type === 'vote' ? 'chain-block vote' : 'chain-block';
+          const payload = JSON.stringify(b.payload);
+          const short =
+            payload.length > 180 ? payload.slice(0, 180) + '…' : payload;
+          return `<div class="${cls}">
+            <div><strong>#${b.index}</strong> · ${escapeHtml(b.type)} · ${escapeHtml(b.timestamp)}</div>
+            <div>prev ${escapeHtml(b.prevHash.slice(0, 16))}…</div>
+            <div>hash ${escapeHtml(b.hash.slice(0, 16))}…</div>
+            <div>${escapeHtml(short)}</div>
+          </div>`;
+        })
+        .join('');
+    }
+
+    document.getElementById('btnRefresh').onclick = () => load();
+    load().catch((e) => {
+      document.getElementById('auditPill').textContent = e.message;
+      document.getElementById('auditPill').className = 'pill bad';
+    });
+    setInterval(load, 8000);
+  </script>
+</body>
+</html>
