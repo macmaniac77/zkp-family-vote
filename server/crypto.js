@@ -88,12 +88,14 @@ export function hashToPoint(data) {
   const seed = typeof data === 'string' ? new TextEncoder().encode(data) : data;
   for (let i = 0; i < 256; i++) {
     const candidate = sha256(concatBytes(seed, Uint8Array.of(i)));
+    // Force even y by using compressed form 0x02 || x
     const compressed = new Uint8Array(33);
     compressed[0] = 0x02;
     compressed.set(candidate, 1);
     try {
       return Point.fromHex(toHex(compressed));
     } catch {
+      // try odd y
       compressed[0] = 0x03;
       try {
         return Point.fromHex(toHex(compressed));
@@ -159,6 +161,9 @@ function challengeHash(message, L, R) {
 
 /**
  * Sign a ballot for an election (LSAG-style linkable ring signature).
+ * Proves knowledge of one secret key in the ring and binds a key image
+ * so the same key cannot sign twice for the same election.
+ * message binds: electionId + choice + keyImage
  */
 export function signVote({ electionId, choice, ringPublicKeys, secretKeyHex }) {
   const n = ringPublicKeys.length;
@@ -189,12 +194,15 @@ export function signVote({ electionId, choice, ringPublicKeys, secretKeyHex }) {
   const s = new Array(n);
   const c = new Array(n);
 
+  // random alpha for signer
   const alpha = bytesToScalar(randomBytes(32));
   const L_pi = G.multiply(alpha);
   const R_pi = Hp[signerIndex].multiply(alpha);
 
+  // c_{π+1} = H(m, L_π, R_π)
   c[(signerIndex + 1) % n] = challengeHash(message, L_pi, R_pi);
 
+  // walk around the ring
   for (let step = 1; step < n; step++) {
     const i = (signerIndex + step) % n;
     s[i] = bytesToScalar(randomBytes(32));
@@ -203,6 +211,7 @@ export function signVote({ electionId, choice, ringPublicKeys, secretKeyHex }) {
     c[(i + 1) % n] = challengeHash(message, Li, Ri);
   }
 
+  // close the ring: s_π = alpha - c_π * sk
   s[signerIndex] = modN(alpha - modN(c[signerIndex] * sk));
 
   return {
@@ -216,7 +225,9 @@ export function signVote({ electionId, choice, ringPublicKeys, secretKeyHex }) {
   };
 }
 
-/** Verify a vote ring signature and key image binding. */
+/**
+ * Verify a vote ring signature and key image binding.
+ */
 export function verifyVote(sig) {
   const { keyImage, c0, s, ring, choice, electionId } = sig;
   if (!ring?.length || !s || s.length !== ring.length) {
@@ -266,8 +277,11 @@ export function verifyVote(sig) {
       const next = challengeHash(message, Li, Ri);
       if (i < n - 1) {
         c[i + 1] = next;
-      } else if (next !== c[0]) {
-        return { ok: false, reason: 'Ring signature verification failed' };
+      } else {
+        // final challenge must equal c0
+        if (next !== c[0]) {
+          return { ok: false, reason: 'Ring signature verification failed' };
+        }
       }
     }
   } catch (e) {
