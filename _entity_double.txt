@@ -1,4 +1,0 @@
-A:&amp;amp;
-Q:&amp;quot;
-L:&amp;lt;
-G:&amp;gt;
