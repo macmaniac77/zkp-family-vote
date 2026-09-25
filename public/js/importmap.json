@@ -1,0 +1,14 @@
+{
+  "imports": {
+    "@noble/curves/secp256k1.js": "/vendor/@noble/curves/esm/secp256k1.js",
+    "@noble/curves/": "/vendor/@noble/curves/esm/",
+    "@noble/hashes/sha2.js": "/vendor/@noble/hashes/esm/sha2.js",
+    "@noble/hashes/sha256.js": "/vendor/@noble/hashes/esm/sha256.js",
+    "@noble/hashes/hmac.js": "/vendor/@noble/hashes/esm/hmac.js",
+    "@noble/hashes/utils.js": "/vendor/@noble/hashes/esm/utils.js",
+    "@noble/hashes/utils": "/vendor/@noble/hashes/esm/utils.js",
+    "@noble/hashes/crypto.js": "/vendor/@noble/hashes/esm/crypto.js",
+    "@noble/hashes/crypto": "/vendor/@noble/hashes/esm/crypto.js",
+    "@noble/hashes/": "/vendor/@noble/hashes/esm/"
+  }
+}
